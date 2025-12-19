@@ -1,17 +1,20 @@
 ---
-- name: Official K8s Stack Deployment (Self-Healing)
+- name: The Unstoppable Deployment
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Force Install Kubernetes Library
-      pip:
-        name: kubernetes
-        state: present
-      # This installs it into the temporary container's memory
+    - name: Download the Tooling
+      shell: |
+        curl -LO "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl"
+        chmod +x ./kubectl
+      args:
+        chdir: /tmp
 
-    - name: Deploy the Web-DB Stack
-      kubernetes.core.k8s:
-        state: present
-        src: "{{ playbook_dir }}/web-db-stack.yml"
+    - name: Deploy the Stack (Direct API)
+      shell: |
+        /tmp/kubectl apply -f {{ playbook_dir }}/web-db-stack.yml \
+        --token="{{ lookup('env', 'K8S_AUTH_API_KEY') }}" \
+        --server="{{ lookup('env', 'K8S_AUTH_HOST') }}" \
+        --insecure-skip-tls-verify=true
