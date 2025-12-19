@@ -73,7 +73,7 @@ metadata:
   name: adminer
   namespace: demo-webdb
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels: { app: adminer }
   template:
