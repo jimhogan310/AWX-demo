@@ -1,21 +1,13 @@
 ---
-- name: Build the Web and Database Stack
+- name: Deploy Database and Adminer Stack
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Read the manifest file
-      set_fact:
-        stack_manifest: "{{ lookup('file', playbook_dir + '/web-db-stack.yml') }}"
-
-    - name: Post to K8s API (The Raw Way)
-      uri:
-        url: "https://kubernetes.default.svc/api/v1/namespaces/default/pods" # We will adjust this
-        method: POST
-        body: "{{ stack_manifest | from_yaml }}"
-        body_format: json
-        status_code: [201, 409]
-        validate_certs: false
-        headers:
-          Authorization: "Bearer {{ lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
+    - name: Apply Kubernetes Manifest
+      kubernetes.core.k8s:
+        state: present
+        # Point to the file directly - the module handles the '---' separators!
+        src: "{{ playbook_dir }}/web-db-stack.yml"
+        wait: yes
