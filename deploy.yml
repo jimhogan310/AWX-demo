@@ -1,0 +1,12 @@
+---
+- name: Build the Web and Database Stack
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Deploy the manifest to Kubernetes
+      kubernetes.core.k8s:
+        state: present
+        # This MUST match the name of File 1
+        src: "{{ playbook_dir }}/web-db-stack.yml"
