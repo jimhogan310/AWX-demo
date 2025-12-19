@@ -5,10 +5,17 @@
   gather_facts: false
 
   tasks:
-    - name: Deploy the stack using kubectl
-      command: "kubectl apply -f {{ playbook_dir }}/web-db-stack.yml"
-      register: k8s_output
+    - name: Read the manifest file
+      set_fact:
+        stack_manifest: "{{ lookup('file', playbook_dir + '/web-db-stack.yml') }}"
 
-    - name: Show Kubernetes Output
-      debug:
-        var: k8s_output.stdout_lines
+    - name: Post to K8s API (The Raw Way)
+      uri:
+        url: "https://kubernetes.default.svc/api/v1/namespaces/default/pods" # We will adjust this
+        method: POST
+        body: "{{ stack_manifest | from_yaml }}"
+        body_format: json
+        status_code: [201, 409]
+        validate_certs: false
+        headers:
+          Authorization: "Bearer {{ lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
