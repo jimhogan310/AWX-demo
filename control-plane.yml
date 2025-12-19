@@ -3,11 +3,13 @@
   gather_facts: true
 
   tasks:
-    - name: Show hostname
-      command: hostname
+    - name: Show hostname (from facts)
+      debug:
+        msg: "{{ ansible_hostname }}"
 
-    - name: Show uptime
-      command: uptime
+    - name: Show uptime seconds (from facts)
+      debug:
+        msg: "{{ ansible_uptime_seconds | default('uptime not available') }}"
 
     - name: Ensure /tmp/awx-test exists
       file:
