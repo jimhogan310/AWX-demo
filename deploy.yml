@@ -5,8 +5,10 @@
   gather_facts: false
 
   tasks:
-    - name: Deploy the manifest to Kubernetes
-      kubernetes.core.k8s:
-        state: present
-        # This MUST match the name of File 1
-        src: "{{ playbook_dir }}/web-db-stack.yml"
+    - name: Deploy the stack using kubectl
+      command: "kubectl apply -f {{ playbook_dir }}/web-db-stack.yml"
+      register: k8s_output
+
+    - name: Show Kubernetes Output
+      debug:
+        var: k8s_output.stdout_lines
