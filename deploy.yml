@@ -1,12 +1,17 @@
 ---
-- name: Official K8s Stack Deployment
+- name: Official K8s Stack Deployment (Self-Healing)
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
+    - name: Force Install Kubernetes Library
+      pip:
+        name: kubernetes
+        state: present
+      # This installs it into the temporary container's memory
+
     - name: Deploy the Web-DB Stack
       kubernetes.core.k8s:
         state: present
-        # Point to your blueprint
         src: "{{ playbook_dir }}/web-db-stack.yml"
