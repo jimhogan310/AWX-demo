@@ -1,15 +1,20 @@
 ---
-- name: Build the Web and Database Stack
+- name: Build the Web and Database Stack (Raw API)
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Deploy the stack using kubectl
-      shell: |
-        kubectl apply -f {{ playbook_dir }}/web-db-stack.yml
-      register: k8s_output
+    - name: Read the manifest file
+      set_fact:
+        stack_content: "{{ lookup('file', playbook_dir + '/web-db-stack.yml') }}"
 
-    - name: Show Kubernetes Output
-      debug:
-        var: k8s_output.stdout_lines
+    - name: Deploy via Curl (Raw API)
+      shell: |
+        TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+        curl -k -X POST https://kubernetes.default.svc/api/v1/namespaces/default/pods \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/yaml" \
+        --data-binary @{{ playbook_dir }}/web-db-stack.yml
+      register: api_res
+      failed_when: api_res.rc != 0 and '409' not in api_res.stdout
