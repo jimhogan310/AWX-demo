@@ -1,20 +1,16 @@
 ---
-- name: Build the Web and Database Stack (Raw API)
+- name: Managed Kubernetes Deployment
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Read the manifest file
-      set_fact:
-        stack_content: "{{ lookup('file', playbook_dir + '/web-db-stack.yml') }}"
-
-    - name: Deploy via Curl (Raw API)
+    - name: Run kubectl apply inside a temporary container
       shell: |
-        TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-        curl -k -X POST https://kubernetes.default.svc/api/v1/namespaces/default/pods \
-        -H "Authorization: Bearer $TOKEN" \
-        -H "Content-Type: application/yaml" \
-        --data-binary @{{ playbook_dir }}/web-db-stack.yml
-      register: api_res
-      failed_when: api_res.rc != 0 and '409' not in api_res.stdout
+        kubectl run ansible-deploy-runner \
+        --image=bitnami/kubectl:latest \
+        --restart=Never \
+        --overrides='{ "spec": { "serviceAccountName": "awx" } }' \
+        --rm -i -- apply -f - <<EOF
+        {{ lookup('file', playbook_dir + '/web-db-stack.yml') }}
+        EOF
