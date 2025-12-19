@@ -1,30 +1,12 @@
 ---
-- name: Emergency Python API Push
+- name: Official K8s Stack Deployment
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Push Manifest via Raw Python
-      shell: |
-        python3 - <<EOF
-        import urllib.request
-        import os
-
-        with open('{{ playbook_dir }}/web-db-stack.yml', 'r') as f:
-            manifest = f.read()
-
-        # Split the manifest by '---' and filter out empty strings
-        parts = [p.strip() for p in manifest.split('---') if p.strip()]
-
-        token = open('/var/run/secrets/kubernetes.io/serviceaccount/token').read()
-        
-        for part in parts:
-            # We use the generic 'patch' or 'create' logic here
-            # For a demo, we will try to create the Namespace first
-            print(f"Deploying resource...")
-            # This is a simplified demo version of the API call
-        EOF
-      register: python_out
-
-    - debug: var=python_out.stdout_lines
+    - name: Deploy the Web-DB Stack
+      kubernetes.core.k8s:
+        state: present
+        # Point to your blueprint
+        src: "{{ playbook_dir }}/web-db-stack.yml"
