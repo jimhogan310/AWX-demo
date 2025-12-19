@@ -1,0 +1,16 @@
+- name: AWX control-plane baseline
+  hosts: localhost
+  gather_facts: true
+
+  tasks:
+    - name: Show hostname
+      command: hostname
+
+    - name: Show uptime
+      command: uptime
+
+    - name: Ensure /tmp/awx-test exists
+      file:
+        path: /tmp/awx-test
+        state: directory
+        mode: '0755'
