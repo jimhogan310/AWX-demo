@@ -9,12 +9,11 @@ data:
     from flask import Flask, request, render_template_string
     from openai import OpenAI
     import os
-    import psycopg2 # For Postgres connection
+    import psycopg2
 
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    # Database connection setup
     def save_to_db(user_msg, gpt_resp):
         try:
             conn = psycopg2.connect(
@@ -45,28 +44,30 @@ data:
     <head>
         <title>NTI No Touch Provisioning</title>
         <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f0f2f5; }
-            .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
-            input[type="text"] { width: 80%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; }
-            button { padding: 12px 20px; background-color: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
-            .chat-box { margin-top: 20px; padding: 15px; border-left: 5px solid #1a73e8; background: #f8f9fa; }
+            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 40px; background-color: #ffffff; color: #000000; }
+            .container { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #000; border-radius: 0px; }
+            h1 { color: #000000; text-transform: uppercase; letter-spacing: 2px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+            input[type="text"] { width: 75%; padding: 12px; border: 1px solid #000; border-radius: 0px; font-size: 16px; }
+            button { padding: 12px 25px; background-color: #000000; color: #ffffff; border: none; border-radius: 0px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
+            button:hover { background-color: #333333; }
+            .chat-box { margin-top: 30px; padding: 20px; border: 1px solid #000; background: #fafafa; }
+            .footer { margin-top: 20px; font-size: 12px; color: #666; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>NTI No Touch Provisioning</h1>
-            <p>Automated AI-Driven Infrastructure Lab</p>
+            <p style="font-weight: bold;">Automated AI-Driven Infrastructure Lab</p>
             <form method="POST">
-                <input type="text" name="msg" placeholder="Enter provisioning command or question..." required>
+                <input type="text" name="msg" placeholder="SYSTEM COMMAND..." required>
                 <button type="submit">Execute</button>
             </form>
             {% if resp %}
                 <div class="chat-box">
-                    <strong>GPT Response:</strong><br>
+                    <strong style="text-transform: uppercase;">GPT Response:</strong><br><br>
                     {{ resp }}
                 </div>
-                <p><small style="color: gray;">(This interaction has been saved to the Postgres database)</small></p>
+                <div class="footer">LOGGED TO POSTGRES_DB // STATUS: SECURE</div>
             {% endif %}
         </div>
     </body>
@@ -83,7 +84,7 @@ data:
                 messages=[{"role": "user", "content": user_msg}]
             )
             resp = completion.choices[0].message.content
-            save_to_db(user_msg, resp) # Database call
+            save_to_db(user_msg, resp)
         return render_template_string(HTML, resp=resp)
 
     if __name__ == "__main__":
@@ -121,22 +122,3 @@ spec:
         ports:
         - containerPort: 5000
         volumeMounts:
-        - name: code-volume
-          mountPath: /app
-      volumes:
-      - name: code-volume
-        configMap:
-          name: gpt-app-code
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: gpt-service
-  namespace: demo-webdb
-spec:
-  type: LoadBalancer
-  ports:
-    - port: 9000
-      targetPort: 5000
-  selector:
-    app: gpt-client
