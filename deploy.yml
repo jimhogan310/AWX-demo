@@ -12,19 +12,28 @@
       args:
         chdir: /tmp
 
-    - name: Create Kubernetes Secret for OpenAI
+    - name: Generate Secret Manifest
       shell: |
-        # This command takes the key from AWX and puts it into the cluster
         /tmp/kubectl create secret generic gpt-secret \
         --namespace=demo-webdb \
         --from-literal=api-key="{{ lookup('ansible.builtin.env', 'OPENAI_API_KEY') }}" \
-        --dry-run=client -o yaml | /tmp/kubectl apply -f -
+        --dry-run=client -o yaml > /tmp/gpt-secret.yml
+      # We don't need cluster auth for a 'dry-run'
+
+    - name: Apply OpenAI Secret to Cluster
+      shell: "/tmp/kubectl apply -f /tmp/gpt-secret.yml"
       environment:
         K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
         K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
 
     - name: Deploy Postgres and Adminer
       shell: "/tmp/kubectl apply -f {{ playbook_dir }}/web-db-stack.yml"
+      environment:
+        K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
+        K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
 
     - name: Deploy GPT Client
       shell: "/tmp/kubectl apply -f {{ playbook_dir }}/gpt-client.yml"
+      environment:
+        K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
+        K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
