@@ -1,20 +1,31 @@
 ---
-- name: The Unstoppable Deployment
+- name: Deploy Full Vint Cerf Stack
   hosts: localhost
   connection: local
   gather_facts: false
 
   tasks:
-    - name: Download the Tooling
+    - name: Download Tooling
       shell: |
         curl -LO "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl"
         chmod +x ./kubectl
       args:
         chdir: /tmp
 
-    - name: Deploy the Stack (Direct API)
+    - name: Create Kubernetes Secret for OpenAI
       shell: |
-        /tmp/kubectl apply -f {{ playbook_dir }}/web-db-stack.yml \
-        --token="{{ lookup('env', 'K8S_AUTH_API_KEY') }}" \
-        --server="{{ lookup('env', 'K8S_AUTH_HOST') }}" \
-        --insecure-skip-tls-verify=true
+        # This command creates the secret from the AWX environment variable
+        /tmp/kubectl create secret generic gpt-secret \
+        --namespace=demo-webdb \
+        --from-literal=api-key="{{ lookup('env', 'OPENAI_API_KEY') }}" \
+        --dry-run=client -o yaml | /tmp/kubectl apply -f -
+      environment:
+        # These ensure kubectl knows where the cluster is
+        K8S_AUTH_API_KEY: "{{ lookup('env', 'K8S_AUTH_API_KEY') }}"
+        K8S_AUTH_HOST: "{{ lookup('env', 'K8S_AUTH_HOST') }}"
+
+    - name: Deploy Postgres and Adminer
+      shell: "/tmp/kubectl apply -f {{ playbook_dir }}/web-db-stack.yml"
+
+    - name: Deploy GPT Client
+      shell: "/tmp/kubectl apply -f {{ playbook_dir }}/gpt-client.yml"
