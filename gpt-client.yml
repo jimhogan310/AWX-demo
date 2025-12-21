@@ -1,35 +1,22 @@
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gpt-app-code
-  namespace: demo-webdb
-data:
-  app.py: |
-    from flask import Flask, request, render_template_string
-    from openai import OpenAI
-    import os
-
-    app = Flask(__name__)
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-    HTML = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>GPT Client</title>
-        <style>body { font-family: sans-serif; margin: 40px; line-height: 1.6; }</style>
-    </head>
-    <body>
-        <h1>Vint Cerf GPT Lab</h1>
-        <form method="POST">
-            <input type="text" name="msg" placeholder="Ask something..." style="width:70%; padding:10px;">
-            <button type="submit" style="padding:10px;">Send</button>
-        </form>
-        {% if resp %}<div style="margin-top:20px; padding:20px; background:#f4f4f4;"><b>GPT:</b> {{ resp }}</div>{% endif %}
-    </body>
-    </html>
-    """
+import psycopg2  # New library for Postgres
+    
+    # Connect to the DB using the Service Name we created earlier
+    def save_to_db(user_msg, gpt_resp):
+        try:
+            conn = psycopg2.connect(
+                host="postgres", # This is the K8s service name!
+                database="appdb",
+                user="appuser",
+                password="supersecretpassword"
+            )
+            cur = conn.cursor()
+            cur.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, user_input TEXT, gpt_output TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+            cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
+            conn.commit()
+            cur.close()
+            conn.close()
+        except Exception as e:
+            print(f"Database error: {e}")
 
     @app.route("/", methods=["GET", "POST"])
     def chat():
@@ -41,59 +28,5 @@ data:
                 messages=[{"role": "user", "content": user_msg}]
             )
             resp = completion.choices[0].message.content
+            save_to_db(user_msg, resp) # SAVE IT!
         return render_template_string(HTML, resp=resp)
-
-    if __name__ == "__main__":
-        app.run(host="0.0.0.0", port=5000)
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gpt-client
-  namespace: demo-webdb
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: gpt-client
-  template:
-    metadata:
-      labels:
-        app: gpt-client
-    spec:
-      containers:
-      - name: python-app
-        image: python:3.9-slim
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            pip install flask openai
-            python /app/app.py
-        env:
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: gpt-secret
-              key: api-key
-        ports:
-        - containerPort: 5000
-        volumeMounts:
-        - name: code-volume
-          mountPath: /app
-      volumes:
-      - name: code-volume
-        configMap:
-          name: gpt-app-code
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: gpt-service
-  namespace: demo-webdb
-spec:
-  type: LoadBalancer
-  ports:
-    - port: 9000
-      targetPort: 5000
-  selector:
-    app: gpt-client
