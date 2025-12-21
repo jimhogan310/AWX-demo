@@ -4,6 +4,12 @@
   connection: local
   gather_facts: false
 
+  vars:
+    # We define these once to keep the commands clean
+    k8s_server: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
+    k8s_token: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
+    k8s_opts: "--server={{ k8s_server }} --token={{ k8s_token }} --insecure-skip-tls-verify=true"
+
   tasks:
     - name: Download Tooling
       shell: |
@@ -12,28 +18,15 @@
       args:
         chdir: /tmp
 
-    - name: Generate Secret Manifest
+    - name: Create Kubernetes Secret for OpenAI
       shell: |
-        /tmp/kubectl create secret generic gpt-secret \
+        /tmp/kubectl {{ k8s_opts }} create secret generic gpt-secret \
         --namespace=demo-webdb \
         --from-literal=api-key="{{ lookup('ansible.builtin.env', 'OPENAI_API_KEY') }}" \
-        --dry-run=client -o yaml > /tmp/gpt-secret.yml
-      # We don't need cluster auth for a 'dry-run'
-
-    - name: Apply OpenAI Secret to Cluster
-      shell: "/tmp/kubectl apply -f /tmp/gpt-secret.yml"
-      environment:
-        K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
-        K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
+        --dry-run=client -o yaml | /tmp/kubectl {{ k8s_opts }} apply -f -
 
     - name: Deploy Postgres and Adminer
-      shell: "/tmp/kubectl apply -f {{ playbook_dir }}/web-db-stack.yml"
-      environment:
-        K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
-        K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
+      shell: "/tmp/kubectl {{ k8s_opts }} apply -f {{ playbook_dir }}/web-db-stack.yml"
 
     - name: Deploy GPT Client
-      shell: "/tmp/kubectl apply -f {{ playbook_dir }}/gpt-client.yml"
-      environment:
-        K8S_AUTH_API_KEY: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_API_KEY') }}"
-        K8S_AUTH_HOST: "{{ lookup('ansible.builtin.env', 'K8S_AUTH_HOST') }}"
+      shell: "/tmp/kubectl {{ k8s_opts }} apply -f {{ playbook_dir }}/gpt-client.yml"
