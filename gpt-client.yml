@@ -87,4 +87,60 @@ data:
             save_to_db(user_msg, resp)
         return render_template_string(HTML, resp=resp)
 
-    if __name__ == "__
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=5000)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpt-client
+  namespace: demo-webdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpt-client
+  template:
+    metadata:
+      labels:
+        app: gpt-client
+    spec:
+      containers:
+      - name: python-app
+        image: python:3.9-slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Waiting for configmap mount..."
+            sleep 5
+            ls -R /app
+            pip install flask openai psycopg2-binary
+            python /app/app.py
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpt-secret
+              key: api-key
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: code-volume
+          mountPath: /app
+      volumes:
+      - name: code-volume
+        configMap:
+          name: gpt-app-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpt-service
+  namespace: demo-webdb
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9000
+      targetPort: 5000
+  selector:
+    app: gpt-client
