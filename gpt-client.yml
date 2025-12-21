@@ -1,22 +1,77 @@
-import psycopg2  # New library for Postgres
-    
-    # Connect to the DB using the Service Name we created earlier
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gpt-app-code
+  namespace: demo-webdb
+data:
+  app.py: |
+    from flask import Flask, request, render_template_string
+    from openai import OpenAI
+    import os
+    import psycopg2 # For Postgres connection
+
+    app = Flask(__name__)
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    # Database connection setup
     def save_to_db(user_msg, gpt_resp):
         try:
             conn = psycopg2.connect(
-                host="postgres", # This is the K8s service name!
+                host="postgres",
                 database="appdb",
                 user="appuser",
                 password="supersecretpassword"
             )
             cur = conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, user_input TEXT, gpt_output TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY, 
+                    user_input TEXT, 
+                    gpt_output TEXT, 
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
             cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
             conn.commit()
             cur.close()
             conn.close()
         except Exception as e:
             print(f"Database error: {e}")
+
+    HTML = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>NTI No Touch Provisioning</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 40px; background-color: #f0f2f5; }
+            .container { max-width: 800px; margin: auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+            h1 { color: #1a73e8; border-bottom: 2px solid #1a73e8; padding-bottom: 10px; }
+            input[type="text"] { width: 80%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; }
+            button { padding: 12px 20px; background-color: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .chat-box { margin-top: 20px; padding: 15px; border-left: 5px solid #1a73e8; background: #f8f9fa; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>NTI No Touch Provisioning</h1>
+            <p>Automated AI-Driven Infrastructure Lab</p>
+            <form method="POST">
+                <input type="text" name="msg" placeholder="Enter provisioning command or question..." required>
+                <button type="submit">Execute</button>
+            </form>
+            {% if resp %}
+                <div class="chat-box">
+                    <strong>GPT Response:</strong><br>
+                    {{ resp }}
+                </div>
+                <p><small style="color: gray;">(This interaction has been saved to the Postgres database)</small></p>
+            {% endif %}
+        </div>
+    </body>
+    </html>
+    """
 
     @app.route("/", methods=["GET", "POST"])
     def chat():
@@ -28,5 +83,60 @@ import psycopg2  # New library for Postgres
                 messages=[{"role": "user", "content": user_msg}]
             )
             resp = completion.choices[0].message.content
-            save_to_db(user_msg, resp) # SAVE IT!
+            save_to_db(user_msg, resp) # Database call
         return render_template_string(HTML, resp=resp)
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=5000)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpt-client
+  namespace: demo-webdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpt-client
+  template:
+    metadata:
+      labels:
+        app: gpt-client
+    spec:
+      containers:
+      - name: python-app
+        image: python:3.9-slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            pip install flask openai psycopg2-binary
+            python /app/app.py
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gpt-secret
+              key: api-key
+        ports:
+        - containerPort: 5000
+        volumeMounts:
+        - name: code-volume
+          mountPath: /app
+      volumes:
+      - name: code-volume
+        configMap:
+          name: gpt-app-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gpt-service
+  namespace: demo-webdb
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 9000
+      targetPort: 5000
+  selector:
+    app: gpt-client
