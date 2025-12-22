@@ -14,19 +14,30 @@ data:
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+    # --- ZERO TOUCH CONFIGURATION ---
     AWX_URL = "http://awx-service.awx.svc.cluster.local" 
-    AWX_TOKEN = "x645j8MA4YzR7cfISWW4yF17By2c8o"
+    AWX_TOKEN = "PASTE_YOUR_TOKEN_HERE" 
     TEMPLATE_ID = "11" 
 
-    def trigger_awx(manifest_content):
+    def trigger_awx(manifest_content, delete_mode=False):
         url = f"{AWX_URL}/api/v2/job_templates/{TEMPLATE_ID}/launch/"
-        data = json.dumps({"extra_vars": {"manifest_content": manifest_content}}).encode('utf-8')
+        # We pass DELETE_MODE as an extra_var so Ansible knows what to do
+        payload = {
+            "extra_vars": {
+                "manifest_content": manifest_content,
+                "DELETE_MODE": "true" if delete_mode else "false"
+            }
+        }
+        data = json.dumps(payload).encode('utf-8')
+        
         req = url_request.Request(url, data=data, method='POST')
         req.add_header("Authorization", f"Bearer {AWX_TOKEN}")
         req.add_header("Content-Type", "application/json")
+        
         try:
             with url_request.urlopen(req) as response:
-                return json.loads(response.read().decode()).get('job')
+                res_data = json.loads(response.read().decode())
+                return res_data.get('job')
         except Exception as e:
             return f"ERROR: {str(e)}"
 
@@ -44,14 +55,22 @@ data:
     def chat():
         if request.method == "POST":
             user_msg = request.form.get("msg")
+            # Identify if the user clicked 'Deploy' or 'Delete'
+            action = request.form.get("action") 
+            is_delete = (action == "delete")
+
             completion = client.chat.completions.create(
                 model="gpt-4o", 
-                messages=[{"role": "system", "content": "You are a Kubernetes Architect. Output ONLY valid YAML manifests."},
+                messages=[{"role": "system", "content": "You are a Kubernetes Architect. Output ONLY valid YAML manifests. No conversational text."},
                           {"role": "user", "content": user_msg}]
             )
             gpt_resp = completion.choices[0].message.content
-            job_id = trigger_awx(gpt_resp) if any(w in user_msg.lower() for w in ["deploy", "provision", "create", "build"]) else None
-            final_resp = gpt_resp + (f"\n\n🚀 DEPLOYMENT TRIGGERED! ID: {job_id}" if job_id else "")
+            
+            job_id = trigger_awx(gpt_resp, delete_mode=is_delete)
+            
+            status_label = "🗑️ DELETION TRIGGERED" if is_delete else "🚀 DEPLOYMENT TRIGGERED"
+            final_resp = gpt_resp + f"\n\n**{status_label}**\nAWX Job ID: {job_id}"
+            
             save_to_db(user_msg, final_resp)
             return redirect(url_for('chat'))
         
@@ -61,18 +80,27 @@ data:
         except: history = []
 
         return render_template_string("""
-    <!DOCTYPE html><html><head><style>
-    body{font-family:sans-serif; background:#f4f7f6; padding:20px;}
-    .msg{background:white; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #ddd; white-space:pre-wrap;}
-    .user{color:blue; font-weight:bold;}
-    </style></head><body>
-    <h2>Zero Touch Labs</h2>
-    {% for c in history %}
-    <div class="msg"><span class="user">User:</span> {{c[0]}}</div>
-    <div class="msg"><b>AI:</b> {{c[1]}}</div>
-    {% endfor %}
-    <form method="POST"><input type="text" name="msg" style="width:80%" autofocus> <button>Send</button></form>
-    </body></html>""", history=history)
-
-    if __name__ == "__main__":
-        app.run(host="0.0.0.0", port=5000)
+            <!DOCTYPE html><html><head><title>NTI Zero-Touch</title>
+            <style>
+                body{font-family:sans-serif; background:#eceff1; margin:0; display:flex; flex-direction:column; height:100vh;}
+                header{background:#263238; color:white; padding:15px; text-align:center; font-weight:bold; letter-spacing:1px;}
+                .chat-container{flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:10px;}
+                .box{background:white; padding:15px; border-radius:8px; border:1px solid #cfd8dc; white-space:pre-wrap; font-family:monospace; font-size:13px; max-width:90%;}
+                .user-box{align-self:flex-end; background:#e1f5fe; border-color:#b3e5fc;}
+                .footer{padding:20px; background:white; border-top:1px solid #cfd8dc;}
+                form{display:flex; gap:10px; max-width:1000px; margin:auto;}
+                input{flex:1; padding:12px; border-radius:4px; border:1px solid #ccc;}
+                button{padding:10px 20px; border:none; border-radius:4px; cursor:pointer; color:white; font-weight:bold;}
+                .btn-deploy{background:#2e7d32;} .btn-delete{background:#c62828;}
+            </style></head>
+            <body><header>NTI LABS: AI INFRASTRUCTURE COMMAND</header>
+            <div class="chat-container">
+                {% for c in history %}
+                    <div class="box user-box"><b>USER:</b> {{c[0]}}</div>
+                    <div class="box"><b>AI ARCHITECT:</b><br>{{c[1]}}</div>
+                {% endfor %}
+            </div>
+            <div class="footer"><form method="POST">
+                <input type="text" name="msg" placeholder="Describe the infrastructure..." required autofocus>
+                <button type="submit" name="action" value="deploy" class="btn-deploy">Deploy</button>
+                <button type="submit" name="action" value
