@@ -9,14 +9,13 @@
   tasks:
     - name: Parse Manifests
       set_fact:
-        # Splits the GPT output into a list of objects, ignoring empty ones
         manifest_list: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | from_yaml_all | select('ne', None) | list }}"
 
     - name: Deploy Resources via REST API
       ansible.builtin.uri:
-        # This logic handles both core (v1) and group (apis/...) resources automatically
+        # Fixed URL: Namespaces use a different path than namespaced resources
         url: >-
-          {{ k8s_api }}{{ (item.apiVersion == 'v1') | ternary('/api/v1', '/apis/' + item.apiVersion) }}/namespaces/demo-webdb/{{ (item.kind | lower) }}s/{{ item.metadata.name }}
+          {{ k8s_api }}{{ (item.apiVersion == 'v1') | ternary('/api/v1', '/apis/' + item.apiVersion) }}{{ (item.kind == 'Namespace') | ternary('', '/namespaces/demo-webdb') }}/{{ (item.kind | lower) }}s/{{ item.metadata.name }}?fieldManager=ansible-ztp
         method: PATCH
         body_format: json
         body: "{{ item }}"
