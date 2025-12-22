@@ -10,58 +10,45 @@ data:
     from openai import OpenAI
     import os, json, psycopg2
     from urllib import request as url_request, parse, error as url_error
-
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-    AWX_URL = "http://awx-service.awx.svc.cluster.local" 
-    AWX_TOKEN = "PASTE_YOUR_TOKEN_HERE" 
-    TEMPLATE_ID = "11" 
-
-    def trigger_awx(manifest_content, delete_mode=False):
-        url = f"{AWX_URL}/api/v2/job_templates/{TEMPLATE_ID}/launch/"
-        payload = {"extra_vars": {"manifest_content": manifest_content, "DELETE_MODE": "true" if delete_mode else "false"}}
-        data = json.dumps(payload).encode('utf-8')
-        req = url_request.Request(url, data=data, method='POST')
-        req.add_header("Authorization", f"Bearer {AWX_TOKEN}")
-        req.add_header("Content-Type", "application/json")
-        try:
-            with url_request.urlopen(req) as response:
-                return json.loads(response.read().decode()).get('job')
-        except Exception as e: return f"ERR: {str(e)}"
-
-    def save_to_db(u, g):
-        try:
-            conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
-            cur = conn.cursor()
-            cur.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, user_input TEXT, gpt_output TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
-            cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (u, g))
-            conn.commit(); cur.close(); conn.close()
-        except: pass
-
+    U="http://awx-service.awx.svc.cluster.local"
+    T="PASTE_YOUR_TOKEN_HERE"
+    ID="11"
+    def trig(m, d=False):
+      url = f"{U}/api/v2/job_templates/{ID}/launch/"
+      p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
+      req = url_request.Request(url, data=json.dumps(p).encode(), method='POST')
+      req.add_header("Authorization", f"Bearer {T}")
+      req.add_header("Content-Type", "application/json")
+      try:
+        with url_request.urlopen(req) as r: return json.loads(r.read().decode()).get('job')
+      except Exception as e: return f"ERR:{e}"
+    def db(u, g):
+      try:
+        c=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        k=c.cursor();k.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, u_in TEXT, g_out TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+        k.execute("INSERT INTO chat_history (u_in, g_out) VALUES (%s, %s)", (u, g));c.commit();c.close()
+      except: pass
     @app.route("/", methods=["GET", "POST"])
     def chat():
-        if request.method == "POST":
-            user_msg = request.form.get("msg")
-            is_del = request.form.get("action") == "delete"
-            comp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "K8s Architect. YAML ONLY."}, {"role": "user", "content": user_msg}])
-            gpt_resp = comp.choices[0].message.content
-            job_id = trigger_awx(gpt_resp, delete_mode=is_del)
-            final_resp = gpt_resp + f"\n\n{'🗑️' if is_del else '🚀'} ID: {job_id}"
-            save_to_db(user_msg, final_resp)
-            return redirect(url_for('chat'))
-        try:
-            conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
-            cur = conn.cursor(); cur.execute("SELECT user_input, gpt_output FROM chat_history ORDER BY created_at ASC;"); history = cur.fetchall(); cur.close(); conn.close()
-        except: history = []
-        return render_template_string("""
+      if request.method == "POST":
+        m = request.form.get("msg"); is_d = request.form.get("action") == "delete"
+        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "K8s Architect. YAML ONLY."}, {"role": "user", "content": m}])
+        r = cp.choices[0].message.content; j = trig(r, is_d)
+        f = r + f"\n\n{'🗑️' if is_d else '🚀'} ID: {j}"
+        db(m, f); return redirect(url_for('chat'))
+      try:
+        c=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        k=c.cursor();k.execute("SELECT u_in, g_out FROM chat_history ORDER BY created_at ASC;");h=k.fetchall();c.close()
+      except: h=[]
+      return render_template_string("""
     <!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;background:#eee">
-    <h2>NTI Zero-Touch</h2>
-    {% for c in history %}<div style="background:white;padding:10px;margin-bottom:5px;border-radius:5px"><b>User:</b> {{c[0]}}<br><b>AI:</b><pre>{{c[1]}}</pre></div>{% endfor %}
-    <form method="POST"><input type="text" name="msg" style="width:70%" required autofocus>
-    <button name="action" value="deploy" style="background:green;color:white">Deploy</button>
-    <button name="action" value="delete" style="background:red;color:white">Delete</button></form>
-    </body></html>""", history=history)
-
+    <h3>Zero-Touch</h3>
+    {% for c in h %}<div style="background:#fff;padding:10px;margin-bottom:5px;border-radius:5px"><b>U:</b> {{c[0]}}<br><pre>{{c[1]}}</pre></div>{% endfor %}
+    <form method="POST"><input type="text" name="msg" style="width:60%" required>
+    <button name="action" value="deploy" style="background:green;color:#fff">Deploy</button>
+    <button name="action" value="delete" style="background:red;color:#fff">Delete</button></form>
+    </body></html>""", h=h)
     if __name__ == "__main__":
-        app.run(host="0.0.0.0", port=5000)
+      app.run(host="0.0.0.0", port=5000)
