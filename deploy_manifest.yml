@@ -3,20 +3,28 @@
   hosts: localhost
   gather_facts: false
   vars:
-    # Use the environment variables AWX injects from your K8s Credential
-    k8s_api_host: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
-    k8s_api_key: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
+    k8s_api: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
+    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
 
   tasks:
-    - name: Clean Manifest Content
+    - name: Parse Manifests
       set_fact:
-        clean_manifest: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | trim }}"
+        # Splits the GPT output into a list of objects, ignoring empty ones
+        manifest_list: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | from_yaml_all | select('ne', None) | list }}"
 
-    - name: Deploy to Kubernetes
-      kubernetes.core.k8s:
-        host: "{{ k8s_api_host }}"
-        api_key: "{{ k8s_api_key }}"
-        definition: "{{ clean_manifest }}"
-        namespace: demo-webdb
-        state: present
+    - name: Deploy Resources via REST API
+      ansible.builtin.uri:
+        # This logic handles both core (v1) and group (apis/...) resources automatically
+        url: >-
+          {{ k8s_api }}{{ (item.apiVersion == 'v1') | ternary('/api/v1', '/apis/' + item.apiVersion) }}/namespaces/demo-webdb/{{ (item.kind | lower) }}s/{{ item.metadata.name }}
+        method: PATCH
+        body_format: json
+        body: "{{ item }}"
+        status_code: [200, 201]
+        headers:
+          Authorization: "Bearer {{ k8s_token }}"
+          Content-Type: "application/apply-patch+yaml"
         validate_certs: false
+      loop: "{{ manifest_list }}"
+      loop_control:
+        label: "Deploying {{ item.kind }}: {{ item.metadata.name }}"
