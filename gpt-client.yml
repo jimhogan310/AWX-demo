@@ -12,7 +12,6 @@ data:
     from urllib import request as url_request
     app = Flask(__name__)
     
-    # Securely pulling from environment variables
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     U, T, ID = "http://awx-service.awx.svc.cluster.local", os.getenv("AWX_TOKEN"), "11"
     
@@ -34,7 +33,7 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "NTI GPT-5 Provisioner. YAML ONLY for changes. No text before/after YAML."}, {"role": "user", "content": m}])
+        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "NTI GPT-5 Provisioner. YAML ONLY. No text around YAML."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
         if "kind:" in r:
             c_r = r.replace("```yaml", "").replace("```", "").strip()
@@ -43,68 +42,65 @@ data:
                 j = trig(c_r, is_d); f = r + f"\n\n🚀 GPT-5 JOB: {j}"
         else: f = r
         db_save(m, f); return redirect(url_for('chat'))
+      
       h = []
       try:
         conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword",connect_timeout=3)
-        cur=conn.cursor();cur.execute("SELECT u_in, g_out FROM chat_history ORDER BY id ASC;");h=cur.fetchall();cur.close();conn.close()
+        cur=conn.cursor();cur.execute("SELECT u_in, g_out, id FROM chat_history ORDER BY id ASC;");h=cur.fetchall();cur.close();conn.close()
       except: pass
+      
       return render_template_string("""
     <!DOCTYPE html><html><head><style>
     body{font-family:sans-serif;margin:0;display:flex;height:100vh;background:#f4f7f6;overflow:hidden}
-    #sb{width:280px;background:#202123;color:#fff;display:flex;flex-direction:column;transition:0.3s;flex-shrink:0}
-    #sb.hide{width:0;padding:0;overflow:hidden}
-    .main{flex:1;display:flex;flex-direction:column;position:relative;background:#fff}
-    .header{padding:12px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;background:#fff}
+    #sb{width:280px;background:#202123;color:#fff;display:flex;flex-direction:column;flex-shrink:0}
+    .main{flex:1;display:flex;flex-direction:column;background:#fff}
+    .header{padding:12px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
     .chat-area{flex:1;overflow-y:auto;padding:20px 15%;display:flex;flex-direction:column;gap:15px}
     .m{padding:12px 18px;border-radius:15px;max-width:85%;white-space:pre-wrap;font-size:14px;line-height:1.4;box-shadow:0 1px 2px rgba(0,0,0,0.1)}
-    .u{align-self:flex-end;background:#007bff;color:#fff;border-bottom-right-radius:2px}
-    .a{align-self:flex-start;background:#f7f7f8;color:#333;border:1px solid #ddd;border-bottom-left-radius:2px;font-family:monospace}
-    .input-wrap{padding:20px 15%;background:#fff}
-    form{display:flex;border:1px solid #ddd;border-radius:24px;padding:5px 15px;background:#fff}
+    .u{align-self:flex-end;background:#007bff;color:#fff}
+    .a{align-self:flex-start;background:#f7f7f8;border:1px solid #ddd;font-family:monospace}
+    .input-wrap{padding:20px 15%}
+    form{display:flex;border:1px solid #ddd;border-radius:24px;padding:5px 15px}
     input{flex:1;border:none;outline:none;padding:10px;font-size:15px}
-    .new-chat{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:5px 15px;border-radius:20px;font-size:12px;font-weight:bold}
-    .btn-t{cursor:pointer;font-size:20px;margin-right:10px;color:#666}
-    .history-item {
-      padding: 12px 20px;
-      font-size: 13px;
-      opacity: 0.8;
-      border-bottom: 1px solid #333;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      line-height: 1.4;
-      word-break: break-word;
-    }
+    .h-item{padding:12px 20px;font-size:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+    .h-item:hover{background:#2a2b32}
+    .h-text{flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-right:10px}
+    .del-btn{color:#ff4d4d;text-decoration:none;font-weight:bold;padding:5px}
     </style></head><body>
     <div id="sb">
-      <div style="padding:20px;font-size:11px;opacity:0.5;letter-spacing:1px;font-weight:bold">CHRONICLE (GPT-5)</div>
+      <div style="padding:20px;font-size:11px;opacity:0.5;font-weight:bold">CHRONICLE (GPT-5)</div>
       <div style="overflow-y:auto;flex:1">
         {% for row in history %}
-          <div class="history-item">💬 {{row[0]}}</div>
+          <div class="h-item" onclick="loadMsg('{{row[0]|replace("'", "\\'")}}')">
+            <span class="h-text">💬 {{row[0]}}</span>
+            <a href="/del/{{row[2]}}" class="del-btn" onclick="event.stopPropagation()">×</a>
+          </div>
         {% endfor %}
       </div>
     </div>
     <div class="main">
-      <div class="header">
-        <div><span class="btn-t" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch (GPT-5 Mode)</b></div>
-        <a href="/clear" class="new-chat">+ New Chat</a>
-      </div>
+      <div class="header"><b>NTI Zero-Touch (GPT-5)</b><a href="/clear" style="font-size:12px;color:#007bff;text-decoration:none">Clear All</a></div>
       <div class="chat-area" id="c">
-        {% for row in history %}
-          <div class="m u">{{row[0]}}</div>
-          <div class="m a">{{row[1]}}</div>
-        {% endfor %}
+        {% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}
       </div>
       <div class="input-wrap">
-        <form method="POST">
-          <input type="text" name="msg" placeholder="How may I help you today?" required autocomplete="off">
-          <button style="border:none;background:none;color:#007bff;font-size:20px;cursor:pointer">➤</button>
-        </form>
+        <form method="POST"><input type="text" name="msg" placeholder="Ask GPT-5..." required id="inp">
+        <button style="border:none;background:none;color:#007bff;cursor:pointer">➤</button></form>
       </div>
     </div>
-    <script>document.getElementById('c').scrollTop=999999;</script>
+    <script>
+      function loadMsg(t){ document.getElementById('inp').value = t; document.getElementById('inp').focus(); }
+      document.getElementById('c').scrollTop=999999;
+    </script>
     </body></html>""", history=h)
+
+    @app.route("/del/<int:cid>")
+    def del_chat(cid):
+      try:
+        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        cur=conn.cursor();cur.execute("DELETE FROM chat_history WHERE id=%s",(cid,));conn.commit();cur.close();conn.close()
+      except: pass
+      return redirect(url_for('chat'))
 
     @app.route("/clear")
     def clear():
