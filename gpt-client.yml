@@ -8,27 +8,38 @@ data:
   app.py: |
     from flask import Flask, request, render_template_string, redirect, url_for
     from openai import OpenAI
-    import os, requests, psycopg2
+    import os, json, psycopg2
+    from urllib import request as url_request, parse
 
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     # --- ZERO TOUCH CONFIGURATION ---
-    AWX_URL = "http://awx-demo-service.awx.svc.cluster.local" # Update if your service name is different
-    AWX_TOKEN = "x645j8MA4YzR7cfISWW4yF17By2c8o"
+    AWX_URL = "http://awx-demo-service.awx.svc.cluster.local" 
+    AWX_TOKEN = "PASTE_YOUR_TOKEN_HERE"
     TEMPLATE_ID = "11" 
     # --------------------------------
 
     def trigger_awx(manifest_content):
         url = f"{AWX_URL}/api/v2/job_templates/{TEMPLATE_ID}/launch/"
-        headers = {"Authorization": f"Bearer {AWX_TOKEN}", "Content-Type": "application/json"}
-        payload = {"extra_vars": {"manifest_content": manifest_content}}
-        r = requests.post(url, headers=headers, json=payload, verify=False)
-        return r.json().get('job')
+        data = json.dumps({"extra_vars": {"manifest_content": manifest_content}}).encode('utf-8')
+        
+        req = url_request.Request(url, data=data, method='POST')
+        req.add_header("Authorization", f"Bearer {AWX_TOKEN}")
+        req.add_header("Content-Type", "application/json")
+        
+        try:
+            with url_request.urlopen(req) as response:
+                res_data = json.loads(response.read().decode())
+                return res_data.get('job')
+        except Exception as e:
+            print(f"AWX Trigger Error: {e}")
+            return None
 
     def save_to_db(user_msg, gpt_resp):
         conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
         cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, user_input TEXT, gpt_output TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
         cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
         conn.commit()
         cur.close(); conn.close()
@@ -37,8 +48,6 @@ data:
     def chat():
         if request.method == "POST":
             user_msg = request.form.get("msg")
-            
-            # 1. Get the Blueprint from GPT
             completion = client.chat.completions.create(
                 model="gpt-5-mini", 
                 messages=[{"role": "system", "content": "You are a Kubernetes Architect. Output ONLY valid YAML manifests."},
@@ -46,7 +55,6 @@ data:
             )
             gpt_resp = completion.choices[0].message.content
             
-            # 2. Trigger the "Muscle" (AWX) if it's a deployment request
             job_id = None
             if any(word in user_msg.lower() for word in ["deploy", "provision", "create", "build"]):
                 job_id = trigger_awx(gpt_resp)
@@ -58,10 +66,34 @@ data:
             save_to_db(user_msg, final_resp)
             return redirect(url_for('chat'))
         
-        # (Fetch history logic remains the same...)
         conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
-        cur = conn.cursor(); cur.execute("SELECT user_input, gpt_output FROM chat_history ORDER BY created_at ASC;"); history = cur.fetchall(); cur.close(); conn.close()
-        return render_template_string(open('index.html').read(), history=history) # Note: assumes HTML is in a separate file or string
+        cur = conn.cursor()
+        cur.execute("SELECT user_input, gpt_output FROM chat_history ORDER BY created_at ASC;")
+        history = cur.fetchall()
+        cur.close(); conn.close()
+
+        # Simple HTML embedded for reliability
+        return render_template_string("""
+            <!DOCTYPE html><html><head><title>Zero Touch Provisioning</title>
+            <style>body{font-family:sans-serif;background:#f4f7f6;margin:0;display:flex;flex-direction:column;height:100vh;}
+            header{background:#fff;padding:15px;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;}
+            .chat{flex:1;overflow-y:auto;padding:20px 10%;display:flex;flex-direction:column;gap:15px;}
+            .user-msg{align-self:flex-end;background:#007bff;color:#fff;padding:10px;border-radius:10px;}
+            .gpt-msg{align-self:flex-start;background:#fff;padding:15px;border-radius:10px;border:1px solid #ddd;white-space:pre-wrap;font-family:monospace;}
+            .footer{padding:20px;background:#fff;border-top:1px solid #ddd;}
+            form{display:flex;gap:10px;max-width:80%;margin:auto;}
+            input{flex:1;padding:10px;border-radius:5px;border:1px solid #ccc;}</style></head>
+            <body><header><h1>Zero Touch Provisioning</h1><a href="/clear">New Chat</a></header>
+            <div class="chat" id="cb">{% for c in history %}<div class="user-msg">{{c[0]}}</div><div class="gpt-msg">{{c[1]}}</div>{% endfor %}</div>
+            <div class="footer"><form method="POST"><input type="text" name="msg" placeholder="Command..." required autofocus><button type="submit">Execute</button></form></div>
+            <script>document.getElementById('cb').scrollTop = document.getElementById('cb').scrollHeight;</script></body></html>
+        """, history=history)
+
+    @app.route("/clear")
+    def clear():
+        conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
+        cur = conn.cursor(); cur.execute("DELETE FROM chat_history;"); conn.commit(); cur.close(); conn.close()
+        return redirect(url_for('chat'))
 
     if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
