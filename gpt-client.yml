@@ -12,7 +12,7 @@ data:
     from urllib import request as url_request
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    U, T, ID = "http://awx-service.awx.svc.cluster.local", "x645j8MA4YzR7cfISWW4yF17By2c8oE", "11"
+    U, T, ID = "http://awx-service.awx.svc.cluster.local", "fhcHMkKYH1IKUSV9pFuKEK5UM9KHsV", "11"
     
     def trig(m, d=False):
       p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
