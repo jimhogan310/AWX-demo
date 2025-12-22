@@ -6,47 +6,31 @@ metadata:
   namespace: demo-webdb
 data:
   app.py: |
-    from flask import Flask, request, render_template_string
+    from flask import Flask, request, render_template_string, redirect, url_for
     from openai import OpenAI
     import os
     import psycopg2
-    from datetime import datetime
 
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     def get_db_connection():
-        return psycopg2.connect(
-            host="postgres",
-            database="appdb",
-            user="appuser",
-            password="supersecretpassword"
-        )
+        return psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
 
     def save_to_db(user_msg, gpt_resp):
-        try:
-            conn = get_db_connection()
-            cur = conn.cursor()
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS chat_history (
-                    id SERIAL PRIMARY KEY, 
-                    user_input TEXT, 
-                    gpt_output TEXT, 
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-            """)
-            cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
-            conn.commit()
-            cur.close()
-            conn.close()
-        except Exception as e:
-            print(f"Database error: {e}")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    def fetch_history():
+    def fetch_full_history():
         try:
             conn = get_db_connection()
             cur = conn.cursor()
-            cur.execute("SELECT user_input, gpt_output, created_at FROM chat_history ORDER BY created_at DESC LIMIT 15;")
+            # Get the history in ascending order to show the "thread"
+            cur.execute("SELECT user_input, gpt_output, created_at FROM chat_history ORDER BY created_at ASC;")
             rows = cur.fetchall()
             cur.close()
             conn.close()
@@ -56,84 +40,55 @@ data:
 
     HTML = """
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
-        <meta charset="UTF-8">
-        <title>NTI Zero Touch Provisioning</title>
+        <title>Zero Touch Provisioning</title>
         <style>
-            :root { --bg: #f5f7fb; --sidebar: #ffffff; --text: #333; --accent: #4a90e2; --border: #e1e4e8; }
-            body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; }
+            body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; display: flex; flex-direction: column; height: 100vh; }
+            header { background: #fff; padding: 15px 40px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; }
             
-            /* Sidebar */
-            .sidebar { width: 280px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
-            .sidebar-header { padding: 25px; font-weight: 700; font-size: 14px; text-transform: uppercase; color: #888; border-bottom: 1px solid var(--border); }
-            .history-list { flex: 1; overflow-y: auto; padding: 10px; }
-            .history-item { padding: 12px; border-radius: 8px; margin-bottom: 5px; font-size: 13px; color: #555; cursor: pointer; transition: background 0.2s; }
-            .history-item:hover { background: #f0f2f5; }
-            .history-item small { display: block; color: #bbb; font-size: 10px; margin-bottom: 3px; }
+            .chat-container { flex: 1; overflow-y: auto; padding: 20px 10% 100px 10%; display: flex; flex-direction: column; gap: 20px; }
+            
+            /* Message Bubbles */
+            .msg-group { display: flex; flex-direction: column; width: 100%; }
+            .user-msg { align-self: flex-end; background: #007bff; color: white; padding: 12px 18px; border-radius: 15px 15px 2px 15px; max-width: 70%; font-size: 15px; margin-bottom: 5px; }
+            .gpt-msg { align-self: flex-start; background: white; border: 1px solid #e0e0e0; padding: 15px 20px; border-radius: 15px 15px 15px 2px; max-width: 85%; font-size: 15px; line-height: 1.6; white-space: pre-wrap; }
+            
+            pre { background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #eee; overflow-x: auto; font-family: monospace; }
 
-            /* Main Area */
-            .main { flex: 1; display: flex; flex-direction: column; }
-            .top-bar { padding: 15px 40px; background: #fff; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-            .top-bar h1 { font-size: 18px; margin: 0; color: #222; }
-            
-            .chat-window { flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column; gap: 20px; }
-            
-            .bubble { max-width: 80%; padding: 15px 20px; border-radius: 18px; line-height: 1.5; font-size: 15px; }
-            .user-bubble { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 4px; }
-            .gpt-bubble { align-self: flex-start; background: white; color: #222; border: 1px solid var(--border); border-bottom-left-radius: 4px; white-space: pre-wrap; font-family: inherit; }
-            
-            /* Code formatting inside bubbles */
-            code, pre { background: #f8f9fa; padding: 10px; border-radius: 5px; font-family: 'Consolas', monospace; font-size: 14px; display: block; overflow-x: auto; margin-top: 10px; }
-
-            /* Input */
-            .input-container { padding: 20px 40px; background: #fff; border-top: 1px solid var(--border); }
-            form { display: flex; gap: 10px; }
-            input[type="text"] { flex: 1; padding: 15px; border: 1px solid var(--border); border-radius: 10px; outline: none; font-size: 15px; }
-            input[type="text"]:focus { border-color: var(--accent); }
-            button { background: var(--accent); color: white; border: none; padding: 0 25px; border-radius: 10px; font-weight: 600; cursor: pointer; }
-            button:hover { background: #357abd; }
+            /* Fixed Footer Input */
+            .footer-input { position: fixed; bottom: 0; width: 100%; background: white; border-top: 1px solid #ddd; padding: 20px 0; }
+            .input-wrap { max-width: 80%; margin: auto; display: flex; gap: 10px; }
+            input[type="text"] { flex: 1; padding: 14px; border: 1px solid #ccc; border-radius: 8px; outline: none; font-size: 16px; }
+            button { background: #222; color: white; border: none; padding: 0 25px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+            .new-chat-btn { background: #f0f0f0; color: #666; font-size: 12px; padding: 8px 15px; text-decoration: none; border-radius: 5px; border: 1px solid #ddd; }
         </style>
     </head>
     <body>
-        <div class="sidebar">
-            <div class="sidebar-header">Recent Activity</div>
-            <div class="history-list">
-                {% for row in history %}
-                <div class="history-item">
-                    <small>{{ row[2].strftime('%b %d, %H:%M') }}</small>
-                    {{ row[0][:50] }}{% if row[0]|length > 50 %}...{% endif %}
-                </div>
-                {% endfor %}
+        <header>
+            <h1>Zero Touch Provisioning</h1>
+            <a href="/clear" class="new-chat-btn">+ New Chat</a>
+        </header>
+
+        <div class="chat-container" id="chatBox">
+            {% for chat in history %}
+            <div class="msg-group">
+                <div class="user-msg">{{ chat[0] }}</div>
+                <div class="gpt-msg">{{ chat[1] }}</div>
             </div>
+            {% endfor %}
         </div>
 
-        <div class="main">
-            <div class="top-bar">
-                <h1>NTI Zero Touch Provisioning</h1>
-                <div style="font-size: 12px; color: #999;">Engine: GPT-5-MINI</div>
-            </div>
-
-            <div class="chat-window" id="chatWindow">
-                {% if last_user %}
-                    <div class="bubble user-bubble">{{ last_user }}</div>
-                    <div class="bubble gpt-bubble">{{ last_resp }}</div>
-                {% else %}
-                    <div style="text-align: center; color: #aaa; margin-top: 100px;">Enter a command below to begin provisioning.</div>
-                {% endif %}
-            </div>
-
-            <div class="input-container">
-                <form method="POST">
-                    <input type="text" name="msg" placeholder="Type your instruction..." autofocus required>
-                    <button type="submit">Send</button>
-                </form>
-            </div>
+        <div class="footer-input">
+            <form method="POST" class="input-wrap">
+                <input type="text" name="msg" placeholder="Command the infrastructure..." required autofocus autocomplete="off">
+                <button type="submit">Execute</button>
+            </form>
         </div>
 
         <script>
-            const win = document.getElementById("chatWindow");
-            win.scrollTop = win.scrollHeight;
+            var objDiv = document.getElementById("chatBox");
+            objDiv.scrollTop = objDiv.scrollHeight;
         </script>
     </body>
     </html>
@@ -141,22 +96,27 @@ data:
 
     @app.route("/", methods=["GET", "POST"])
     def chat():
-        last_user = None
-        last_resp = None
         if request.method == "POST":
             user_msg = request.form.get("msg")
-            completion = client.chat.completions.create(
-                model="gpt-5-mini",
-                messages=[{"role": "user", "content": user_msg}]
-            )
-            last_resp = completion.choices[0].message.content
-            last_user = user_msg
-            save_to_db(user_msg, last_resp)
+            completion = client.chat.completions.create(model="gpt-5-mini", messages=[{"role": "user", "content": user_msg}])
+            gpt_resp = completion.choices[0].message.content
+            save_to_db(user_msg, gpt_resp)
+            return redirect(url_for('chat')) # Redirect to refresh and show new message
         
-        history = fetch_history()
-        return render_template_string(HTML, history=history, last_user=last_user, last_resp=last_resp)
+        history = fetch_full_history()
+        return render_template_string(HTML, history=history)
+
+    @app.route("/clear")
+    def clear():
+        # This effectively 'resets' the view for a New Chat
+        # In a production app, we'd use session IDs, but for this lab, we'll just clear the table
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM chat_history;")
+        conn.commit()
+        cur.close()
+        conn.close()
+        return redirect(url_for('chat'))
 
     if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
----
-# Deployment and Service sections remain the same
