@@ -49,27 +49,33 @@ data:
     #sb{width:260px;background:#202123;color:#fff;display:flex;flex-direction:column;transition:0.3s;overflow:hidden}
     #sb.hide{width:0;padding:0}
     .main{flex:1;display:flex;flex-direction:column;background:#fff;position:relative}
-    .header{padding:15px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:15px}
+    .header{padding:10px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;background:#fff;z-index:10}
+    .header-left{display:flex;align-items:center;gap:15px}
     .toggle-btn{cursor:pointer;font-size:20px;color:#666}
+    .new-chat-btn{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:6px 15px;border-radius:18px;font-size:13px;font-weight:600;transition:0.2s}
+    .new-chat-btn:hover{background:#007bff;color:#fff}
     .chat-area{flex:1;overflow-y:auto;padding:20px 15% 100px 15%;display:flex;flex-direction:column;gap:20px}
     .m{max-width:85%;padding:15px 20px;border-radius:15px;font-size:15px;line-height:1.5;white-space:pre-wrap}
     .u{align-self:flex-end;background:#007bff;color:#fff;border-bottom-right-radius:4px}
     .a{align-self:flex-start;background:#f7f7f8;color:#333;border:1px solid #e5e5e5;border-bottom-left-radius:4px;font-family:monospace;font-size:13px}
     .input-wrap{position:absolute;bottom:0;left:0;right:0;padding:20px 15%;background:#fff}
-    form{display:flex;background:#fff;border:1px solid #ddd;border-radius:24px;padding:5px 15px;box-shadow:0 0 10px rgba(0,0,0,0.05)}
+    form{display:flex;background:#fff;border:1px solid #ddd;border-radius:24px;padding:5px 15px;box-shadow:0 0-10px rgba(0,0,0,0.05)}
     input{flex:1;border:none;outline:none;padding:12px;font-size:16px}
     .send-btn{background:none;border:none;cursor:pointer;padding:10px;font-size:20px;color:#007bff}
-    .new-chat{padding:12px;border:1px solid #4d4d4f;margin:10px;border-radius:5px;color:#fff;text-decoration:none;text-align:center;font-size:14px}
     </style></head><body>
     <div id="sb">
-      <a href="/clear" class="new-chat">+ New Chat</a>
-      <div style="padding:15px;font-size:12px;color:#8e8ea0">HISTORY</div>
-      {% for row in history %}<div style="padding:10px 15px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ececf1 opacity:0.8">💬 {{row[0][:25]}}</div>{% endfor %}
+      <div style="padding:20px;font-size:12px;color:#8e8ea0;letter-spacing:1px">HISTORY</div>
+      <div style="overflow-y:auto;flex:1">
+      {% for row in history %}<div style="padding:10px 20px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ececf1;opacity:0.8;border-bottom:1px solid #2d2d2d">💬 {{row[0][:25]}}</div>{% endfor %}
+      </div>
     </div>
     <div class="main">
       <div class="header">
-        <span class="toggle-btn" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span>
-        <b style="color:#333">NTI Zero-Touch Provisioning</b>
+        <div class="header-left">
+          <span class="toggle-btn" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span>
+          <b style="color:#333">NTI Zero-Touch Provisioning</b>
+        </div>
+        <a href="/clear" class="new-chat-btn">+ New Chat</a>
       </div>
       <div class="chat-area" id="c">
         {% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}
