@@ -14,29 +14,20 @@ data:
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    # --- ZERO TOUCH CONFIGURATION ---
     AWX_URL = "http://awx-service.awx.svc.cluster.local" 
-    AWX_TOKEN = "x645j8MA4YzR7cfISWW4yF17By2c8o"  # <--- PUT YOUR TOKEN HERE
+    AWX_TOKEN = "x645j8MA4YzR7cfISWW4yF17By2c8o"
     TEMPLATE_ID = "11" 
-    # --------------------------------
 
     def trigger_awx(manifest_content):
         url = f"{AWX_URL}/api/v2/job_templates/{TEMPLATE_ID}/launch/"
         data = json.dumps({"extra_vars": {"manifest_content": manifest_content}}).encode('utf-8')
-        
         req = url_request.Request(url, data=data, method='POST')
         req.add_header("Authorization", f"Bearer {AWX_TOKEN}")
         req.add_header("Content-Type", "application/json")
-        
         try:
             with url_request.urlopen(req) as response:
-                res_data = json.loads(response.read().decode())
-                return res_data.get('job')
-        except url_error.HTTPError as e:
-            print(f"AWX HTTP Error: {e.code} - {e.reason}")
-            return f"ERROR: HTTP {e.code} ({e.reason})"
+                return json.loads(response.read().decode()).get('job')
         except Exception as e:
-            print(f"AWX General Error: {e}")
             return f"ERROR: {str(e)}"
 
     def save_to_db(user_msg, gpt_resp):
@@ -47,47 +38,41 @@ data:
             cur.execute("INSERT INTO chat_history (user_input, gpt_output) VALUES (%s, %s)", (user_msg, gpt_resp))
             conn.commit()
             cur.close(); conn.close()
-        except Exception as e:
-            print(f"Database Error: {e}")
+        except: pass
 
     @app.route("/", methods=["GET", "POST"])
     def chat():
         if request.method == "POST":
             user_msg = request.form.get("msg")
             completion = client.chat.completions.create(
-                model="gpt-4o", # Updated to a stable model name
+                model="gpt-4o", 
                 messages=[{"role": "system", "content": "You are a Kubernetes Architect. Output ONLY valid YAML manifests."},
                           {"role": "user", "content": user_msg}]
             )
             gpt_resp = completion.choices[0].message.content
-            
-            job_id = None
-            if any(word in user_msg.lower() for word in ["deploy", "provision", "create", "build"]):
-                job_id = trigger_awx(gpt_resp)
-            
-            final_resp = gpt_resp
-            if job_id:
-                if "ERROR" in str(job_id):
-                    final_resp += f"\n\n❌ **TRIGGER FAILED:** {job_id}"
-                else:
-                    final_resp += f"\n\n🚀 **DEPLOYMENT TRIGGERED!**\nAWX Job ID: {job_id}"
-            
+            job_id = trigger_awx(gpt_resp) if any(w in user_msg.lower() for w in ["deploy", "provision", "create", "build"]) else None
+            final_resp = gpt_resp + (f"\n\n🚀 DEPLOYMENT TRIGGERED! ID: {job_id}" if job_id else "")
             save_to_db(user_msg, final_resp)
             return redirect(url_for('chat'))
         
         try:
             conn = psycopg2.connect(host="postgres", database="appdb", user="appuser", password="supersecretpassword")
-            cur = conn.cursor()
-            cur.execute("SELECT user_input, gpt_output FROM chat_history ORDER BY created_at ASC;")
-            history = cur.fetchall()
-            cur.close(); conn.close()
-        except:
-            history = []
+            cur = conn.cursor(); cur.execute("SELECT user_input, gpt_output FROM chat_history ORDER BY created_at ASC;"); history = cur.fetchall(); cur.close(); conn.close()
+        except: history = []
 
         return render_template_string("""
-            <!DOCTYPE html><html><head><title>Zero Touch Provisioning</title>
-            <style>body{font-family:sans-serif;background:#f4f7f6;margin:0;display:flex;flex-direction:column;height:100vh;}
-            header{background:#1a237e;color:white;padding:15px;display:flex;justify-content:space-between;align-items:center;}
-            .chat{flex:1;overflow-y:auto;padding:20px 10%;display:flex;flex-direction:column;gap:15px;}
-            .user-msg{align-self:flex-end;background:#e3f2fd;color:#0d47a1;padding:12px;border-radius:15px;max-width:70%;border:1px solid #bbdefb;}
-            .gpt-msg{align-self:flex-start;background:#fff;padding:15px;border-radius:10px;border:1px solid #ddd;white-space:pre-wrap;font-family:monospace;max-width:85%;box-shadow: 0 2px 4px rgba(0,0,0,0
+    <!DOCTYPE html><html><head><style>
+    body{font-family:sans-serif; background:#f4f7f6; padding:20px;}
+    .msg{background:white; padding:15px; border-radius:10px; margin-bottom:10px; border:1px solid #ddd; white-space:pre-wrap;}
+    .user{color:blue; font-weight:bold;}
+    </style></head><body>
+    <h2>Zero Touch Labs</h2>
+    {% for c in history %}
+    <div class="msg"><span class="user">User:</span> {{c[0]}}</div>
+    <div class="msg"><b>AI:</b> {{c[1]}}</div>
+    {% endfor %}
+    <form method="POST"><input type="text" name="msg" style="width:80%" autofocus> <button>Send</button></form>
+    </body></html>""", history=history)
+
+    if __name__ == "__main__":
+        app.run(host="0.0.0.0", port=5000)
