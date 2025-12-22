@@ -3,7 +3,22 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Apply Manifest from GPT
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ manifest_content }}"
+    - name: Create temporary manifest file
+      copy:
+        content: "{{ manifest_content }}"
+        dest: "/tmp/manifest.yaml"
+
+    - name: Deploy via Python script
+      shell: |
+        python3 -m pip install kubernetes --user
+        python3 -c "
+        import yaml
+        from kubernetes import config, utils
+        from kubernetes.client import api_client
+        config.load_incluster_config()
+        with open('/tmp/manifest.yaml') as f:
+            objects = list(yaml.safe_load_all(f))
+        k8s_client = api_client.ApiClient()
+        for obj in objects:
+            utils.create_from_yaml(k8s_client, yaml_objects=[obj])
+        "
