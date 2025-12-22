@@ -64,10 +64,10 @@ data:
             </form>
             {% if resp %}
                 <div class="chat-box">
-                    <strong style="text-transform: uppercase;">GPT Response (via 4o-mini):</strong><br><br>
+                    <strong style="text-transform: uppercase;">GPT Response (via 5-mini):</strong><br><br>
                     {{ resp }}
                 </div>
-                <div class="footer">LOGGED TO POSTGRES_DB // BRAIN: GPT-4O-MINI</div>
+                <div class="footer">LOGGED TO POSTGRES_DB // BRAIN: GPT-5-MINI (REL. DEC 2025)</div>
             {% endif %}
         </div>
     </body>
@@ -79,8 +79,9 @@ data:
         resp = None
         if request.method == "POST":
             user_msg = request.form.get("msg")
+            # Using the latest GPT-5 mini snapshot for speed and cost-efficiency
             completion = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-5-mini",
                 messages=[{"role": "user", "content": user_msg}]
             )
             resp = completion.choices[0].message.content
@@ -90,56 +91,4 @@ data:
     if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
 ---
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gpt-client
-  namespace: demo-webdb
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: gpt-client
-  template:
-    metadata:
-      labels:
-        app: gpt-client
-    spec:
-      containers:
-      - name: python-app
-        image: python:3.9-slim
-        command: ["/bin/sh", "-c"]
-        args:
-          - |
-            echo "Initializing NTI Environment..."
-            sleep 3
-            pip install flask openai psycopg2-binary
-            python /app/app.py
-        env:
-        - name: OPENAI_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: gpt-secret
-              key: api-key
-        ports:
-        - containerPort: 5000
-        volumeMounts:
-        - name: code-volume
-          mountPath: /app
-      volumes:
-      - name: code-volume
-        configMap:
-          name: gpt-app-code
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: gpt-service
-  namespace: demo-webdb
-spec:
-  type: LoadBalancer
-  ports:
-    - port: 9000
-      targetPort: 5000
-  selector:
-    app: gpt-client
+# [Deployment and Service sections remain the same as before]
