@@ -2,30 +2,18 @@
 - name: Zero Touch Deployer
   hosts: localhost
   gather_facts: false
-  vars:
-    k8s_host: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
-    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
-
   tasks:
-    - name: Clean and Parse Manifest
+    - name: Clean Manifest Content
       set_fact:
-        # We strip markdown and then convert the YAML string into an actual List of objects
-        manifest_list: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | from_yaml_all | list }}"
+        clean_manifest: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | trim }}"
 
-    - name: Deploy Each Resource
-      ansible.builtin.uri:
-        # This dynamically builds the URL based on the Kind (e.g., deployments, services)
-        url: "{{ k8s_host }}/api/v1/namespaces/demo-webdb/{{ (item.kind | lower) }}s/{{ item.metadata.name }}"
-        # For apps/v1 resources like Deployments, the path is slightly different
-        url_apps: "{{ k8s_host }}/apis/apps/v1/namespaces/demo-webdb/deployments/{{ item.metadata.name }}"
-        url_final: "{{ (item.apiVersion == 'apps/v1') | ternary(url_apps, url) }}"
-        method: PATCH
-        body_format: json
-        body: "{{ item }}"
-        status_code: [200, 201]
-        headers:
-          Authorization: "Bearer {{ k8s_token }}"
-          Content-Type: "application/apply-patch+yaml"
+    - name: Deploy to Kubernetes
+      kubernetes.core.k8s:
+        definition: "{{ clean_manifest }}"
+        namespace: demo-webdb
+        state: present
+        # These look up the internal AWX connection automatically
+        host: https://kubernetes.default.svc
+        ca_cert: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        token: "{{ lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
         validate_certs: false
-      loop: "{{ manifest_list }}"
-      when: item is not none
