@@ -12,19 +12,22 @@ data:
     from urllib import request as url_request
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    U, T, ID = "http://awx-service.awx.svc.cluster.local", "x645j8MA4YzR7cfISWW4yF17By2c8o", "11"
+    U, T, ID = "http://awx-service.awx.svc.cluster.local", "PASTE_YOUR_TOKEN_HERE", "11"
+    
     def trig(m, d=False):
       p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
       req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
       req.add_header("Authorization", f"Bearer {T}"); req.add_header("Content-Type", "application/json")
       try:
         with url_request.urlopen(req) as r: return json.loads(r.read().decode()).get('job')
-      except: return "ERR"
+      except Exception as e: return f"ERR: {e}"
+    
     def db_save(u, g):
       try:
         conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword",connect_timeout=3)
         cur=conn.cursor();cur.execute("INSERT INTO chat_history (u_in, g_out) VALUES (%s, %s)", (u, g));conn.commit();cur.close();conn.close()
       except: pass
+
     @app.route("/", methods=["GET", "POST"])
     def chat():
       if request.method == "POST":
@@ -32,7 +35,8 @@ data:
         cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "K8s Provisioner. YAML ONLY for changes. Text for questions."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
         if "kind:" in r:
-          j = trig(r, any(w in m.lower() for w in ["delete","remove"])); f = r + f"\n\n🚀 JOB: {j}"
+            j = trig(r, any(w in m.lower() for w in ["delete", "remove"]))
+            f = r + f"\n\n🚀 JOB: {j}"
         else: f = r
         db_save(m, f); return redirect(url_for('chat'))
       h = []
@@ -42,27 +46,47 @@ data:
       except: pass
       return render_template_string("""
     <!DOCTYPE html><html><head><style>
-    body{font-family:sans-serif;margin:0;display:flex;height:100vh}
-    #sb{width:220px;background:#202123;color:#fff;padding:10px}
-    .main{flex:1;display:flex;flex-direction:column}
-    .chat-area{flex:1;overflow-y:auto;padding:20px 10%;display:flex;flex-direction:column;gap:10px}
-    .m{padding:10px;border-radius:10px;max-width:85%;white-space:pre-wrap;font-size:13px}
-    .u{align-self:flex-end;background:#007bff;color:#fff}
-    .a{align-self:flex-start;background:#f7f7f8;border:1px solid #ddd}
-    form{padding:20px;display:flex;gap:10px}
-    input{flex:1;padding:10px;border-radius:20px;border:1px solid #ddd}
+    body{font-family:sans-serif;margin:0;display:flex;height:100vh;background:#fff;overflow:hidden}
+    #sb{width:260px;background:#202123;color:#fff;display:flex;flex-direction:column;transition:0.3s}
+    #sb.hide{width:0;padding:0;overflow:hidden}
+    .main{flex:1;display:flex;flex-direction:column;position:relative}
+    .header{padding:10px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+    .chat-area{flex:1;overflow-y:auto;padding:20px 15%;display:flex;flex-direction:column;gap:15px}
+    .m{padding:12px 18px;border-radius:15px;max-width:85%;white-space:pre-wrap;font-size:14px;line-height:1.4}
+    .u{align-self:flex-end;background:#007bff;color:#fff;border-bottom-right-radius:2px}
+    .a{align-self:flex-start;background:#f7f7f8;color:#333;border:1px solid #ddd;border-bottom-left-radius:2px;font-family:monospace}
+    .input-wrap{padding:20px 15%;background:#fff}
+    form{display:flex;border:1px solid #ddd;border-radius:24px;padding:5px 15px;box-shadow:0 2px 6px rgba(0,0,0,0.05)}
+    input{flex:1;border:none;outline:none;padding:10px;font-size:15px}
+    .new-chat{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:5px 15px;border-radius:20px;font-size:13px;font-weight:bold}
+    .btn-t{cursor:pointer;font-size:20px;margin-right:10px;color:#666}
     </style></head><body>
-    <div id="sb"><b>HISTORY</b><hr>{% for row in history %}<div style="font-size:11px;margin-bottom:5px">💬 {{row[0][:20]}}</div>{% endfor %}</div>
+    <div id="sb">
+      <div style="padding:20px;font-size:12px;opacity:0.5;letter-spacing:1px">HISTORY</div>
+      <div style="overflow-y:auto;flex:1">
+      {% for row in history %}<div style="padding:10px 20px;font-size:12px;opacity:0.8;border-bottom:1px solid #333">💬 {{row[0][:25]}}</div>{% endfor %}
+      </div>
+    </div>
     <div class="main">
-      <div style="padding:10px;border-bottom:1px solid #eee"><b>NTI Zero-Touch</b> <a href="/clear" style="float:right">+ New</a></div>
-      <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
-      <form method="POST"><input type="text" name="msg" placeholder="Ask or Deploy..." required><button type="submit">➤</button></form>
-    </div><script>document.getElementById('c').scrollTop=99999;</script></body></html>""", history=h)
+      <div class="header">
+        <div><span class="btn-t" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch Provisioning</b></div>
+        <a href="/clear" class="new-chat">+ New Chat</a>
+      </div>
+      <div class="chat-area" id="c">
+        {% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}
+      </div>
+      <div class="input-wrap"><form method="POST"><input type="text" name="msg" placeholder="Ask or Deploy..." required><button style="border:none;background:none;color:#007bff;font-size:20px;cursor:pointer">➤</button></form></div>
+    </div>
+    <script>document.getElementById('c').scrollTop=9999999;</script>
+    </body></html>""", history=h)
+
     @app.route("/clear")
     def clear():
       try:
-        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword");cur=conn.cursor();cur.execute("DELETE FROM chat_history;");conn.commit();cur.close();conn.close()
+        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        cur=conn.cursor();cur.execute("DELETE FROM chat_history;");conn.commit();cur.close();conn.close()
       except: pass
       return redirect(url_for('chat'))
+
     if __name__ == "__main__":
       app.run(host="0.0.0.0", port=5000)
