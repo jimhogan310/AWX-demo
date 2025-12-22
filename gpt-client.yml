@@ -14,14 +14,17 @@ data:
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+    def get_db_connection():
+        return psycopg2.connect(
+            host="postgres",
+            database="appdb",
+            user="appuser",
+            password="supersecretpassword"
+        )
+
     def save_to_db(user_msg, gpt_resp):
         try:
-            conn = psycopg2.connect(
-                host="postgres",
-                database="appdb",
-                user="appuser",
-                password="supersecretpassword"
-            )
+            conn = get_db_connection()
             cur = conn.cursor()
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS chat_history (
@@ -38,57 +41,123 @@ data:
         except Exception as e:
             print(f"Database error: {e}")
 
+    def fetch_history():
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT user_input, gpt_output, created_at FROM chat_history ORDER BY created_at DESC LIMIT 20;")
+            rows = cur.fetchall()
+            cur.close()
+            conn.close()
+            return rows
+        except:
+            return []
+
     HTML = """
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-        <title>NTI No Touch Provisioning</title>
+        <meta charset="UTF-8">
+        <title>NTI MISSION CONTROL</title>
         <style>
-            body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; margin: 40px; background-color: #ffffff; color: #000000; }
-            .container { max-width: 800px; margin: auto; padding: 30px; border: 1px solid #000; border-radius: 0px; }
-            h1 { color: #000000; text-transform: uppercase; letter-spacing: 2px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-            input[type="text"] { width: 75%; padding: 12px; border: 1px solid #000; border-radius: 0px; font-size: 16px; }
-            button { padding: 12px 25px; background-color: #000000; color: #ffffff; border: none; border-radius: 0px; cursor: pointer; font-weight: bold; text-transform: uppercase; }
-            button:hover { background-color: #333333; }
-            .chat-box { margin-top: 30px; padding: 20px; border: 1px solid #000; background: #fafafa; }
-            .footer { margin-top: 20px; font-size: 12px; color: #666; }
+            :root { --bg: #0a0a0a; --panel: #141414; --text: #e0e0e0; --accent: #00ff41; --border: #333; }
+            body { background: var(--bg); color: var(--text); font-family: 'Courier New', Courier, monospace; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+            
+            /* Sidebar for History */
+            .sidebar { width: 300px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+            .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border); font-weight: bold; color: var(--accent); letter-spacing: 2px; }
+            .history-list { flex: 1; overflow-y: auto; padding: 10px; font-size: 12px; }
+            .history-item { padding: 10px; border-bottom: 1px solid #222; cursor: pointer; }
+            .history-item:hover { background: #1a1a1a; }
+            .history-item small { color: #666; display: block; margin-bottom: 4px; }
+
+            /* Main Chat Area */
+            .main { flex: 1; display: flex; flex-direction: column; position: relative; }
+            .header { padding: 15px 30px; background: var(--panel); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+            .chat-window { flex: 1; overflow-y: auto; padding: 40px; scroll-behavior: smooth; }
+            .message { margin-bottom: 30px; line-height: 1.6; }
+            .user-msg { color: var(--accent); font-weight: bold; margin-bottom: 10px; }
+            .gpt-msg { background: #1a1a1a; padding: 20px; border-left: 3px solid var(--accent); white-space: pre-wrap; }
+
+            /* Fixed Input bar */
+            .input-area { padding: 20px 40px; background: var(--panel); border-top: 1px solid var(--border); }
+            form { display: flex; gap: 10px; }
+            input[type="text"] { flex: 1; background: #000; border: 1px solid var(--border); color: var(--accent); padding: 15px; font-family: inherit; outline: none; }
+            button { background: var(--accent); color: #000; border: none; padding: 0 30px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+            
+            .status-bar { font-size: 10px; color: #555; padding: 5px 40px; background: #000; display: flex; justify-content: space-between; }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>NTI No Touch Provisioning</h1>
-            <p style="font-weight: bold;">Automated AI-Driven Infrastructure Lab</p>
-            <form method="POST">
-                <input type="text" name="msg" placeholder="SYSTEM COMMAND..." required>
-                <button type="submit">Execute</button>
-            </form>
-            {% if resp %}
-                <div class="chat-box">
-                    <strong style="text-transform: uppercase;">GPT Response (via 5-mini):</strong><br><br>
-                    {{ resp }}
+        <div class="sidebar">
+            <div class="sidebar-header">AUDIT LOG</div>
+            <div class="history-list">
+                {% for row in history %}
+                <div class="history-item">
+                    <small>{{ row[2].strftime('%H:%M:%S') }}</small>
+                    {{ row[0][:40] }}{% if row[0]|length > 40 %}...{% endif %}
                 </div>
-                <div class="footer">LOGGED TO POSTGRES_DB // BRAIN: GPT-5-MINI (REL. DEC 2025)</div>
-            {% endif %}
+                {% endfor %}
+            </div>
         </div>
+
+        <div class="main">
+            <div class="header">
+                <div style="font-size: 18px; letter-spacing: 4px;">NTI // MISSION CONTROL</div>
+                <div style="font-size: 12px; color: #666;">SYSTEM: GPT-5.2 ONLINE</div>
+            </div>
+
+            <div class="chat-window" id="chatWindow">
+                {% if last_user %}
+                <div class="message">
+                    <div class="user-msg">> EXECUTE: {{ last_user }}</div>
+                    <div class="gpt-msg">{{ last_resp }}</div>
+                </div>
+                {% else %}
+                <div style="color: #444; text-align: center; margin-top: 20%;">READY FOR COMMAND INPUT...</div>
+                {% endif %}
+            </div>
+
+            <div class="input-area">
+                <form method="POST">
+                    <input type="text" name="msg" placeholder="ENTER PROVISIONING COMMAND..." autofocus required>
+                    <button type="submit">Execute</button>
+                </form>
+            </div>
+            <div class="status-bar">
+                <span>CONNECTIVITY: STABLE</span>
+                <span>DB_SYNC: ACTIVE ({{ history|length }} RECORDS)</span>
+                <span>BRAIN: GPT-5-MINI</span>
+            </div>
+        </div>
+
+        <script>
+            // Auto-scroll to bottom of chat
+            const objDiv = document.getElementById("chatWindow");
+            objDiv.scrollTop = objDiv.scrollHeight;
+        </script>
     </body>
     </html>
     """
 
     @app.route("/", methods=["GET", "POST"])
     def chat():
-        resp = None
+        last_user = None
+        last_resp = None
         if request.method == "POST":
             user_msg = request.form.get("msg")
-            # Using the latest GPT-5 mini snapshot for speed and cost-efficiency
             completion = client.chat.completions.create(
                 model="gpt-5-mini",
                 messages=[{"role": "user", "content": user_msg}]
             )
-            resp = completion.choices[0].message.content
-            save_to_db(user_msg, resp)
-        return render_template_string(HTML, resp=resp)
+            last_resp = completion.choices[0].message.content
+            last_user = user_msg
+            save_to_db(user_msg, last_resp)
+        
+        history = fetch_history()
+        return render_template_string(HTML, history=history, last_user=last_user, last_resp=last_resp)
 
     if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
 ---
-# [Deployment and Service sections remain the same as before]
+# [Deployment and Service sections remain the same]
