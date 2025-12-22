@@ -2,16 +2,25 @@
 - name: Zero Touch Deployer
   hosts: localhost
   gather_facts: false
+  vars:
+    # AWX usually sets K8S_AUTH_HOST, but we'll fallback to the internal service if empty
+    k8s_host: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
+    # AWX sets either API_KEY or TOKEN depending on the version
+    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
+
   tasks:
+    - name: Debug Connection (Optional)
+      debug:
+        msg: "Connecting to {{ k8s_host }} (Token length: {{ k8s_token | length }})"
+
     - name: Deploy to Kubernetes API
       ansible.builtin.uri:
-        # These variables come automatically from the AWX Kubernetes Credential
-        url: "{{ lookup('env', 'K8S_AUTH_HOST') }}/api/v1/namespaces/demo-webdb/configmaps"
+        url: "{{ k8s_host }}/api/v1/namespaces/demo-webdb/configmaps"
         method: POST
         body_format: json
         body: "{{ manifest_content | from_yaml }}"
         status_code: [201, 409]
         headers:
-          Authorization: "Bearer {{ lookup('env', 'K8S_AUTH_API_KEY') }}"
+          Authorization: "Bearer {{ k8s_token }}"
           Content-Type: "application/json"
         validate_certs: false
