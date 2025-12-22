@@ -12,7 +12,7 @@ data:
     from urllib import request as url_request
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    U, T, ID = "http://awx-service.awx.svc.cluster.local", "x645j8MA4YzR7cfISWW4yF17By2c8o", "11"
+    U, T, ID = "http://awx-service.awx.svc.cluster.local", "PASTE_YOUR_TOKEN_HERE", "11"
     
     def trig(m, d=False):
       p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
@@ -33,25 +33,13 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        cp = client.chat.completions.create(
-          model="gpt-4o", 
-          messages=[{
-            "role": "system", 
-            "content": "You are the NTI Zero-Touch Provisioner. If the user wants to deploy/delete/scale, output ONLY YAML. If they ask a question or for information, answer normally without YAML. Never use the word Architect."
-          }, {"role": "user", "content": m}]
-        )
+        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "NTI Provisioner. If deploying/scaling, output ONLY YAML. For questions, talk normally. No Architect talk."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
-        
-        # LOGIC: Only trigger AWX if YAML keywords are found
         if "kind:" in r and "metadata:" in r:
-            is_d = any(w in m.lower() for w in ["delete", "remove", "wipe", "destroy"])
-            j = trig(r, is_d)
-            f = r + f"\n\n{'🗑️ DELETED' if is_d else '🚀 DEPLOYED'} | Job: {j}"
-        else:
-            f = r # Pure conversation, no job triggered
-            
+            is_d = any(w in m.lower() for w in ["delete", "remove", "wipe"])
+            j = trig(r, is_d); f = r + f"\n\n🚀 JOB: {j}"
+        else: f = r
         db_save(m, f); return redirect(url_for('chat'))
-      
       h = []
       try:
         conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword",connect_timeout=3)
@@ -59,15 +47,38 @@ data:
       except: pass
       return render_template_string("""
     <!DOCTYPE html><html><head><style>
-    body{font-family:-apple-system,sans-serif;background:#fff;margin:0;display:flex;height:100vh;overflow:hidden}
-    #sb{width:260px;background:#202123;color:#fff;display:flex;flex-direction:column;transition:0.3s;overflow:hidden}
-    #sb.hide{width:0;padding:0}
-    .main{flex:1;display:flex;flex-direction:column;background:#fff;position:relative}
-    .header{padding:10px 20px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between;background:#fff;z-index:10}
-    .header-left{display:flex;align-items:center;gap:15px}
-    .toggle-btn{cursor:pointer;font-size:20px;color:#666}
-    .new-chat-btn{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:6px 15px;border-radius:18px;font-size:13px;font-weight:600;transition:0.2s}
-    .new-chat-btn:hover{background:#007bff;color:#fff}
-    .chat-area{flex:1;overflow-y:auto;padding:20px 15% 100px 15%;display:flex;flex-direction:column;gap:20px}
-    .m{max-width:85%;padding:15px 20px;border-radius:15px;font-size:15px;line-height:1.5;white-space:pre-wrap}
-    .u{align-self:flex-end;background:#007bff;color
+    body{font-family:sans-serif;margin:0;display:flex;height:100vh;background:#fff}
+    #sb{width:250px;background:#202123;color:#fff;display:flex;flex-direction:column}
+    .main{flex:1;display:flex;flex-direction:column;position:relative}
+    .header{padding:10px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
+    .chat-area{flex:1;overflow-y:auto;padding:20px 15%;display:flex;flex-direction:column;gap:15px}
+    .m{padding:12px 18px;border-radius:15px;max-width:85%;white-space:pre-wrap;font-size:14px}
+    .u{align-self:flex-end;background:#007bff;color:#fff}
+    .a{align-self:flex-start;background:#f7f7f8;color:#333;font-family:monospace;border:1px solid #ddd}
+    .input-wrap{padding:20px 15%}
+    form{display:flex;border:1px solid #ddd;border-radius:24px;padding:5px 15px}
+    input{flex:1;border:none;outline:none;padding:10px}
+    .new-chat{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:5px 12px;border-radius:15px;font-size:12px}
+    </style></head><body>
+    <div id="sb"><div style="padding:20px;font-size:12px">HISTORY</div>
+    {% for row in history %}<div style="padding:10px 20px;font-size:12px;opacity:0.7">💬 {{row[0][:20]}}...</div>{% endfor %}
+    </div>
+    <div class="main">
+      <div class="header"><b>NTI Zero-Touch Provisioning</b><a href="/clear" class="new-chat">+ New Chat</a></div>
+      <div class="chat-area" id="c">
+        {% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}
+      </div>
+      <div class="input-wrap"><form method="POST"><input type="text" name="msg" placeholder="Ask or Deploy..." required><button style="border:none;background:none;color:#007bff;cursor:pointer">➤</button></form></div>
+    </div>
+    <script>const c=document.getElementById('c');c.scrollTop=c.scrollHeight;</script>
+    </body></html>""", history=h)
+
+    @app.route("/clear")
+    def clear():
+      try:
+        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        cur=conn.cursor();cur.execute("DELETE FROM chat_history;");conn.commit();cur.close();conn.close()
+      except: pass
+      return redirect(url_for('chat'))
+
+    if __
