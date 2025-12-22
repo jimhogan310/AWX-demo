@@ -2,6 +2,11 @@
 - name: Zero Touch Deployer
   hosts: localhost
   gather_facts: false
+  vars:
+    # Use the environment variables AWX injects from your K8s Credential
+    k8s_api_host: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
+    k8s_api_key: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
+
   tasks:
     - name: Clean Manifest Content
       set_fact:
@@ -9,11 +14,9 @@
 
     - name: Deploy to Kubernetes
       kubernetes.core.k8s:
+        host: "{{ k8s_api_host }}"
+        api_key: "{{ k8s_api_key }}"
         definition: "{{ clean_manifest }}"
         namespace: demo-webdb
         state: present
-        # These look up the internal AWX connection automatically
-        host: https://kubernetes.default.svc
-        ca_cert: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-        token: "{{ lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
         validate_certs: false
