@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-{{ app_instance_name | default('lab') }}
+  namespace: {{ target_namespace | default('demo-webdb') }}
+spec:
+  replicas: {{ replica_count | default(1) }}
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:{{ redis_version | default('6.2') }}
+        ports:
+        - containerPort: 6379
