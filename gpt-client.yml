@@ -13,20 +13,33 @@ data:
     app = Flask(__name__)
     
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    U, T, ID = "[http://awx-service.awx.svc.cluster.local](http://awx-service.awx.svc.cluster.local)", os.getenv("AWX_TOKEN"), "11"
+    U, T, ID = "http://awx-service.awx.svc.cluster.local", os.getenv("AWX_TOKEN"), "11"
     
     def trig(r, d=False):
-      # REGEX: Grab only the part starting with apiVersion
-      y = re.search(r"(apiVersion:.*)", r, re.DOTALL)
-      if not y: return "NO-YAML"
-      m = y.group(1).strip()
+      # Find start of YAML
+      start = r.find("apiVersion:")
+      if start == -1: 
+          print("DEBUG: No apiVersion found in response")
+          return "NO-YAML"
+      
+      # Clean YAML from any AI prose
+      m = r[start:].strip()
+      m = re.sub(r"```yaml|```", "", m).strip()
       
       p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
       req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
-      req.add_header("Authorization", f"Bearer {T}"); req.add_header("Content-Type", "application/json")
+      req.add_header("Authorization", f"Bearer {T}")
+      req.add_header("Content-Type", "application/json")
+      
       try:
-        with url_request.urlopen(req) as resp: return json.loads(resp.read().decode()).get('job')
-      except: return "AWX-ERR"
+        print(f"DEBUG: Attempting to trigger AWX Job {ID}...")
+        with url_request.urlopen(req, timeout=10) as resp:
+            job_id = json.loads(resp.read().decode()).get('job')
+            print(f"DEBUG: AWX Success! Job ID: {job_id}")
+            return job_id
+      except Exception as e:
+        print(f"DEBUG: AWX ERROR: {e}")
+        return f"AWX-ERR: {e}"
     
     def db_save(u, g):
       try:
@@ -38,9 +51,10 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "YAML ONLY."}, {"role": "user", "content": m}])
+        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "You are a K8s YAML generator. Only output valid YAML."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
-        f = r + (f"\n\n🚀 JOB: {trig(r, 'delete' in m.lower())}" if "apiVersion" in r else "")
+        res = trig(r, 'delete' in m.lower())
+        f = r + f"\n\n🚀 JOB: {res}"
         db_save(m, f); return redirect(url_for('chat'))
       
       h = []
@@ -67,24 +81,11 @@ data:
     .h-text{flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
     .del-btn{color:#ff4d4d;text-decoration:none;padding-left:10px}
     </style></head><body>
-    <div id="sb">
-      <div style="padding:20px;font-size:11px;opacity:0.5">HISTORY (GPT-5)</div>
-      <div style="overflow-y:auto;flex:1">
-        {% for row in history %}
-          <div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()">
-            <span class="h-text">💬 {{row[0]}}</span>
-            <a href="/del/{{row[2]}}" class="del-btn" onclick="event.stopPropagation()">×</a>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-    <div class="main">
-      <div class="header">
-        <div><span style="cursor:pointer;margin-right:15px" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch</b></div>
-        <a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a>
-      </div>
-      <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
-      <div class="input-wrap"><form method="POST"><input type="text" name="msg" placeholder="How can I help you today?" required id="inp" autocomplete="off"><button style="border:none;background:none;color:#007bff;cursor:pointer">➤</button></form></div>
+    <div id="sb"><div style="padding:20px;font-size:11px;opacity:0.5">HISTORY (GPT-5)</div>
+    <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span class="h-text">💬 {{row[0]}}</span><a href="/del/{{row[2]}}" class="del-btn" onclick="event.stopPropagation()">×</a></div>{% endfor %}</div></div>
+    <div class="main"><div class="header"><div><span style="cursor:pointer;margin-right:15px" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch</b></div><a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a></div>
+    <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
+    <div class="input-wrap"><form method="POST"><input type="text" name="msg" placeholder="Ask..." required id="inp" autocomplete="off"><button style="border:none;background:none;color:#007bff;cursor:pointer">➤</button></form></div>
     </div><script>document.getElementById('c').scrollTop=999999;</script></body></html>""", history=h)
 
     @app.route("/del/<int:cid>")
