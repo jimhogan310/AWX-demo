@@ -59,7 +59,7 @@ data:
     <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <title>NTI No Touch Provisioning</title>
+        <title>NTI Zero Touch Provisioning</title>
         <style>
             :root { --bg: #f5f7fb; --sidebar: #ffffff; --text: #333; --accent: #4a90e2; --border: #e1e4e8; }
             body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; display: flex; height: 100vh; }
