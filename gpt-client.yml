@@ -21,7 +21,7 @@ data:
       req.add_header("Authorization", f"Bearer {T}"); req.add_header("Content-Type", "application/json")
       try:
         with url_request.urlopen(req) as r: return json.loads(r.read().decode()).get('job')
-      except Exception as e: return f"ERR: {e}"
+      except: return "AWX-ERR"
     
     def db_save(u, g):
       try:
@@ -33,14 +33,9 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "NTI GPT-5 Provisioner. YAML ONLY. No text around YAML."}, {"role": "user", "content": m}])
+        cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "NTI GPT-5 Provisioner. YAML ONLY."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
-        if "kind:" in r:
-            c_r = r.replace("```yaml", "").replace("```", "").strip()
-            if "apiVersion" in c_r:
-                is_d = any(w in m.lower() for w in ["delete", "remove", "wipe"])
-                j = trig(c_r, is_d); f = r + f"\n\n🚀 GPT-5 JOB: {j}"
-        else: f = r
+        f = r + (f"\n\n🚀 GPT-5 JOB: {trig(r)}" if "kind:" in r else "")
         db_save(m, f); return redirect(url_for('chat'))
       
       h = []
@@ -52,7 +47,8 @@ data:
       return render_template_string("""
     <!DOCTYPE html><html><head><style>
     body{font-family:sans-serif;margin:0;display:flex;height:100vh;background:#f4f7f6;overflow:hidden}
-    #sb{width:280px;background:#202123;color:#fff;display:flex;flex-direction:column;flex-shrink:0}
+    #sb{width:280px;background:#202123;color:#fff;display:flex;flex-direction:column;transition:0.3s;flex-shrink:0}
+    #sb.hide{width:0;padding:0;overflow:hidden}
     .main{flex:1;display:flex;flex-direction:column;background:#fff}
     .header{padding:12px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
     .chat-area{flex:1;overflow-y:auto;padding:20px 15%;display:flex;flex-direction:column;gap:15px}
@@ -65,7 +61,10 @@ data:
     .h-item{padding:12px 20px;font-size:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;cursor:pointer}
     .h-item:hover{background:#2a2b32}
     .h-text{flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-right:10px}
-    .del-btn{color:#ff4d4d;text-decoration:none;font-weight:bold;padding:5px}
+    .del-btn{color:#ff4d4d;text-decoration:none;font-weight:bold;padding:5px;opacity:0.6}
+    .del-btn:hover{opacity:1}
+    .new-chat{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:5px 15px;border-radius:20px;font-size:12px;font-weight:bold}
+    .btn-t{cursor:pointer;font-size:20px;margin-right:15px;color:#666}
     </style></head><body>
     <div id="sb">
       <div style="padding:20px;font-size:11px;opacity:0.5;font-weight:bold">CHRONICLE (GPT-5)</div>
@@ -79,13 +78,16 @@ data:
       </div>
     </div>
     <div class="main">
-      <div class="header"><b>NTI Zero-Touch (GPT-5)</b><a href="/clear" style="font-size:12px;color:#007bff;text-decoration:none">Clear All</a></div>
+      <div class="header">
+        <div><span class="btn-t" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch (GPT-5)</b></div>
+        <a href="/clear" class="new-chat">+ New Chat</a>
+      </div>
       <div class="chat-area" id="c">
         {% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}
       </div>
       <div class="input-wrap">
-        <form method="POST"><input type="text" name="msg" placeholder="Ask GPT-5..." required id="inp">
-        <button style="border:none;background:none;color:#007bff;cursor:pointer">➤</button></form>
+        <form method="POST"><input type="text" name="msg" placeholder="Ask GPT-5..." required id="inp" autocomplete="off">
+        <button style="border:none;background:none;color:#007bff;cursor:pointer;font-size:20px">➤</button></form>
       </div>
     </div>
     <script>
