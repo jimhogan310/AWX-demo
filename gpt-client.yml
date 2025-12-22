@@ -64,10 +64,10 @@ data:
             </form>
             {% if resp %}
                 <div class="chat-box">
-                    <strong style="text-transform: uppercase;">GPT Response:</strong><br><br>
+                    <strong style="text-transform: uppercase;">GPT Response (via 4o-mini):</strong><br><br>
                     {{ resp }}
                 </div>
-                <div class="footer">LOGGED TO POSTGRES_DB // STATUS: SECURE</div>
+                <div class="footer">LOGGED TO POSTGRES_DB // BRAIN: GPT-4O-MINI</div>
             {% endif %}
         </div>
     </body>
@@ -80,7 +80,7 @@ data:
         if request.method == "POST":
             user_msg = request.form.get("msg")
             completion = client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": user_msg}]
             )
             resp = completion.choices[0].message.content
@@ -111,9 +111,8 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - |
-            echo "Waiting for configmap mount..."
-            sleep 5
-            ls -R /app
+            echo "Initializing NTI Environment..."
+            sleep 3
             pip install flask openai psycopg2-binary
             python /app/app.py
         env:
