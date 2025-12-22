@@ -64,7 +64,6 @@ data:
     input{flex:1;border:none;outline:none;padding:10px;font-size:15px}
     .new-chat{text-decoration:none;color:#007bff;border:1px solid #007bff;padding:5px 15px;border-radius:20px;font-size:12px;font-weight:bold}
     .btn-t{cursor:pointer;font-size:20px;margin-right:10px;color:#666}
-    /* Two-line text wrapping for history */
     .history-item {
       padding: 12px 20px;
       font-size: 13px;
@@ -99,7 +98,7 @@ data:
       </div>
       <div class="input-wrap">
         <form method="POST">
-          <input type="text" name="msg" placeholder="Ask or Deploy..." required autocomplete="off">
+          <input type="text" name="msg" placeholder="How may I help you today?" required autocomplete="off">
           <button style="border:none;background:none;color:#007bff;font-size:20px;cursor:pointer">➤</button>
         </form>
       </div>
@@ -138,4 +137,22 @@ spec:
         command: ["/bin/sh", "-c"]
         args:
           - pip install flask openai psycopg2-binary;
-            python /app/app.
+            python /app/app.py;
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nti-gpt-secrets
+              key: OPENAI_API_KEY
+        - name: AWX_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nti-gpt-secrets
+              key: AWX_TOKEN
+        volumeMounts:
+        - name: code
+          mountPath: /app
+      volumes:
+      - name: code
+        configMap:
+          name: gpt-app-code
