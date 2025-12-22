@@ -2,23 +2,23 @@
 - name: Zero Touch Deployer
   hosts: localhost
   gather_facts: false
-  tasks:
-    - name: Create temporary manifest file
-      copy:
-        content: "{{ manifest_content }}"
-        dest: "/tmp/manifest.yaml"
+  vars:
+    # This reads the internal K8s token automatically provided to the AWX pod
+    k8s_token: "{{ lookup('file', '/var/run/secrets/kubernetes.io/serviceaccount/token') }}"
+    k8s_api: "https://kubernetes.default.svc"
 
-    - name: Deploy via Python script
-      shell: |
-        python3 -m pip install kubernetes --user
-        python3 -c "
-        import yaml
-        from kubernetes import config, utils
-        from kubernetes.client import api_client
-        config.load_incluster_config()
-        with open('/tmp/manifest.yaml') as f:
-            objects = list(yaml.safe_load_all(f))
-        k8s_client = api_client.ApiClient()
-        for obj in objects:
-            utils.create_from_yaml(k8s_client, yaml_objects=[obj])
-        "
+    # We'll default to 'demo-webdb', but GPT can override this
+    target_ns: "demo-webdb"
+
+  tasks:
+    - name: Deploy ConfigMap via API (Test Case)
+      ansible.builtin.uri:
+        url: "{{ k8s_api }}/api/v1/namespaces/{{ target_ns }}/configmaps"
+        method: POST
+        body_format: json
+        body: "{{ manifest_content | from_yaml }}"
+        status_code: [201, 409] # 201 is Created, 409 means it already exists
+        headers:
+          Authorization: "Bearer {{ k8s_token }}"
+          Content-Type: "application/json"
+        validate_certs: false
