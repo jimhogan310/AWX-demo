@@ -2,25 +2,16 @@
 - name: Zero Touch Deployer
   hosts: localhost
   gather_facts: false
-  vars:
-    k8s_host: "{{ lookup('env', 'K8S_AUTH_HOST') | default('https://kubernetes.default.svc', true) }}"
-    k8s_token: "{{ lookup('env', 'K8S_AUTH_API_KEY') | default(lookup('env', 'K8S_AUTH_TOKEN'), true) }}"
-
   tasks:
     - name: Clean Manifest Content
       set_fact:
-        # This regex strips away ```yaml and ``` if GPT included them
         clean_manifest: "{{ manifest_content | regex_replace('^```yaml\\n|```$', '') | trim }}"
 
-    - name: Deploy to Kubernetes API
-      ansible.builtin.uri:
-        url: "{{ k8s_host }}/api/v1/namespaces/demo-webdb/configmaps"
-        method: POST
-        body_format: json
-        # We convert the cleaned string into a JSON object
-        body: "{{ clean_manifest | from_yaml }}"
-        status_code: [201, 409]
-        headers:
-          Authorization: "Bearer {{ k8s_token }}"
-          Content-Type: "application/json"
-        validate_certs: false
+    - name: Apply Manifest via Kubectl
+      shell: |
+        echo '{{ clean_manifest }}' | kubectl apply -f -
+      register: kubectl_out
+
+    - name: Show Result
+      debug:
+        var: kubectl_out.stdout_lines
