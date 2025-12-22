@@ -1,9 +1,8 @@
 ---
 - name: Zero Touch Deployer
   hosts: localhost
-  connection: local
+  gather_facts: false
   tasks:
-    - name: Apply Manifest from GPT
-      kubernetes.core.k8s:
-        state: present
-        definition: "{{ manifest_content }}"
+    - name: Apply Manifest using kubectl
+      shell: |
+        echo "{{ manifest_content }}" | kubectl apply -f -
