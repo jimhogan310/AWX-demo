@@ -9,46 +9,54 @@ data:
     from flask import Flask, request, render_template_string, redirect, url_for
     from openai import OpenAI
     import os, json, psycopg2
-    from urllib import request as url_request, parse, error as url_error
+    from urllib import request as url_request
     app = Flask(__name__)
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    U="http://awx-service.awx.svc.cluster.local"
-    T="PASTE_YOUR_TOKEN_HERE"
-    ID="11"
+    U, T, ID = "http://awx-service.awx.svc.cluster.local", "PASTE_YOUR_TOKEN_HERE", "11"
     def trig(m, d=False):
-      url = f"{U}/api/v2/job_templates/{ID}/launch/"
       p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
-      req = url_request.Request(url, data=json.dumps(p).encode(), method='POST')
-      req.add_header("Authorization", f"Bearer {T}")
-      req.add_header("Content-Type", "application/json")
+      req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
+      req.add_header("Authorization", f"Bearer {T}"); req.add_header("Content-Type", "application/json")
       try:
         with url_request.urlopen(req) as r: return json.loads(r.read().decode()).get('job')
       except Exception as e: return f"ERR:{e}"
     def db(u, g):
       try:
         c=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
-        k=c.cursor();k.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, u_in TEXT, g_out TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+        k=c.cursor();k.execute("CREATE TABLE IF NOT EXISTS chat_history (id SERIAL PRIMARY KEY, u_in TEXT, g_out TEXT);")
         k.execute("INSERT INTO chat_history (u_in, g_out) VALUES (%s, %s)", (u, g));c.commit();c.close()
       except: pass
     @app.route("/", methods=["GET", "POST"])
     def chat():
       if request.method == "POST":
-        m = request.form.get("msg"); is_d = request.form.get("action") == "delete"
+        m = request.form.get("msg"); is_d = any(w in m.lower() for w in ["delete", "remove", "wipe", "destroy"])
         cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "K8s Architect. YAML ONLY."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content; j = trig(r, is_d)
-        f = r + f"\n\n{'🗑️' if is_d else '🚀'} ID: {j}"
+        f = r + f"\n\n{'🗑️ DELETED' if is_d else '🚀 DEPLOYED'} | Job: {j}"
         db(m, f); return redirect(url_for('chat'))
       try:
         c=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
-        k=c.cursor();k.execute("SELECT u_in, g_out FROM chat_history ORDER BY created_at ASC;");h=k.fetchall();c.close()
+        k=c.cursor();k.execute("SELECT u_in, g_out FROM chat_history ORDER BY id ASC;");h=k.fetchall();c.close()
       except: h=[]
       return render_template_string("""
-    <!DOCTYPE html><html><body style="font-family:sans-serif;padding:20px;background:#eee">
-    <h3>Zero-Touch</h3>
-    {% for c in h %}<div style="background:#fff;padding:10px;margin-bottom:5px;border-radius:5px"><b>U:</b> {{c[0]}}<br><pre>{{c[1]}}</pre></div>{% endfor %}
-    <form method="POST"><input type="text" name="msg" style="width:60%" required>
-    <button name="action" value="deploy" style="background:green;color:#fff">Deploy</button>
-    <button name="action" value="delete" style="background:red;color:#fff">Delete</button></form>
+    <!DOCTYPE html><html><head><style>
+    body{font-family:-apple-system,sans-serif;background:#fff;margin:0;display:flex;flex-direction:column;height:100vh}
+    .chat{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column}
+    .m{max-width:80%;margin-bottom:15px;padding:12px 16px;border-radius:18px;line-height:1.5;font-size:15px}
+    .u{align-self:flex-end;background:#007bff;color:#fff;border-bottom-right-radius:4px}
+    .a{align-self:flex-start;background:#f1f0f0;color:#000;border-bottom-left-radius:4px}
+    pre{background:#f8f9fa;padding:10px;border-radius:8px;overflow-x:auto;font-size:13px;border:1px solid #ddd}
+    form{padding:20px;border-top:1px solid #eee;display:flex;gap:10px}
+    input{flex:1;padding:12px;border-radius:24px;border:1px solid #ddd;outline:none}
+    </style></head><body>
+    <div class="chat" id="c">
+    {% for c in h %}
+    <div class="m u">{{c[0]}}</div><div class="m a"><pre>{{c[1]}}</pre></div>
+    {% endfor %}
+    </div>
+    <form method="POST"><input type="text" name="msg" placeholder="Message NTI Architect..." required autofocus>
+    <button style="border:none;background:none;color:#007bff;font-weight:bold;cursor:pointer">Send</button></form>
+    <script>const c=document.getElementById('c');c.scrollTop=c.scrollHeight;</script>
     </body></html>""", h=h)
     if __name__ == "__main__":
       app.run(host="0.0.0.0", port=5000)
