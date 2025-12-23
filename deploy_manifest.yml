@@ -13,9 +13,9 @@
 
     - name: Deploy Resources via REST API
       ansible.builtin.uri:
-        # Fixed URL: Namespaces use a different path than namespaced resources
+        # The URL now dynamically injects the target_namespace sent by the GPT Client
         url: >-
-          {{ k8s_api }}{{ (item.apiVersion == 'v1') | ternary('/api/v1', '/apis/' + item.apiVersion) }}{{ (item.kind == 'Namespace') | ternary('', '/namespaces/demo-webdb') }}/{{ (item.kind | lower) }}s/{{ item.metadata.name }}?fieldManager=ansible-ztp
+          {{ k8s_api }}{{ (item.apiVersion == 'v1') | ternary('/api/v1', '/apis/' + item.apiVersion) }}{{ (item.kind == 'Namespace') | ternary('', '/namespaces/' + (target_namespace | default('demo-webdb'))) }}/{{ (item.kind | lower) }}s{{ (item.kind == 'Namespace') | ternary('', '/' + item.metadata.name) }}?fieldManager=ansible-ztp
         method: PATCH
         body_format: json
         body: "{{ item }}"
@@ -26,4 +26,4 @@
         validate_certs: false
       loop: "{{ manifest_list }}"
       loop_control:
-        label: "Deploying {{ item.kind }}: {{ item.metadata.name }}"
+        label: "Deploying {{ item.kind }}: {{ item.metadata.name }} into {{ target_namespace | default('demo-webdb') }}"
