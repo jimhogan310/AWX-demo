@@ -17,18 +17,14 @@ data:
     def trig(r, d=False):
       start = r.find("apiVersion:")
       if start == -1: return "NO-YAML"
-      
       ns_search = re.search(r"namespace:\s*([\w-]+)", r)
       target_ns = ns_search.group(1) if ns_search else "demo-webdb"
-      
       m = r[start:].strip()
       m = re.sub(r"```yaml|```", "", m).strip()
-      
       p = {"extra_vars": {"manifest_content": m, "target_namespace": target_ns, "DELETE_MODE": "true" if d else "false"}}
       req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
       req.add_header("Authorization", f"Bearer {T}")
       req.add_header("Content-Type", "application/json")
-      
       try:
         with url_request.urlopen(req, timeout=10) as resp:
             return json.loads(resp.read().decode()).get('job')
@@ -45,22 +41,13 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
+        # --- FIXED SYSTEM PROMPT STRING ---
+        sys_msg = "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ Rules: 1. You MUST wrap all Kubernetes YAML inside triple backticks like this: ```yaml [code] ```. 2. NEVER put your playful conversational text inside those backticks. 3. NEVER include a 'kind: Namespace' object. Explain briefly outside the code block that you're skipping the namespace creation to keep the demo dashboard perfectly green! ✅ 4. Ensure the 'namespace:' field in the metadata matches the user's request."
+        
         cp = client.chat.completions.create(
             model="gpt-4o", 
             messages=[
-                {
-                    "role": "system", 
-                    "content": (
-                        "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ "
-                        "You are playful, high-energy, and love making K8s deployments feel like magic. "
-                        "Rules: "
-                        "1. You MUST wrap all Kubernetes YAML inside triple backticks like this: ```yaml [code] ```. "
-                        "2. NEVER put your playful conversational text inside those backticks. "
-                        "3. NEVER include a 'kind: Namespace' object. Explain briefly outside the code block "
-                        "that you're skipping the namespace creation to keep the demo dashboard perfectly green! ✅ "
-                        "4. Ensure the 'namespace:' field in the metadata matches the user's request."
-                    )
-                },
+                {"role": "system", "content": sys_msg},
                 {"role": "user", "content": m}
             ]
         )
@@ -94,4 +81,7 @@ data:
     .del-btn{color:#ff4d4d;text-decoration:none;padding-left:10px}
     </style></head><body>
     <div id="sb"><div style="padding:20px;font-size:11px;opacity:0.5;letter-spacing:1px">VERSION 1.2 - ZTP</div>
-    <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span
+    <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span class="h-text">💬 {{row[0]}}</span><a href="/del/{{row[2]}}" class="del-btn">×</a></div>{% endfor %}</div></div>
+    <div class="main"><div class="header"><div><span style="cursor:pointer;margin-right:15px" onclick="toggleSidebar()">☰</span><b>NTI Zero-Touch</b></div><a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a></div>
+    <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
+    <div class="input-wrap"><form method="POST" id="chat-form"><textarea
