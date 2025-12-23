@@ -88,7 +88,7 @@ data:
     <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
     <div class="input-wrap">
       <form method="POST" id="chat-form">
-        <textarea name="msg" placeholder="Ask for legacy Linux or SQL configs..." required id="inp" autocomplete="off"></textarea>
+        <textarea name="msg" placeholder="How may I help you today?" required id="inp" autocomplete="off"></textarea>
         <div class="btn-wrap"><button style="border:none;background:none;color:#007bff;cursor:pointer;font-size:20px">➤</button></div>
       </form>
     </div>
