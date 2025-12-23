@@ -84,4 +84,76 @@ data:
     <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span class="h-text">💬 {{row[0]}}</span><a href="/del/{{row[2]}}" class="del-btn">×</a></div>{% endfor %}</div></div>
     <div class="main"><div class="header"><div><span style="cursor:pointer;margin-right:15px" onclick="toggleSidebar()">☰</span><b>NTI Zero-Touch</b></div><a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a></div>
     <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
-    <div class="input-wrap"><form method="POST" id="chat-form"><textarea
+    <div class="input-wrap"><form method="POST" id="chat-form"><textarea name="msg" placeholder="Describe migration task..." required id="inp"></textarea>
+    <div class="btn-wrap"><button style="border:none;background:none;color:#007bff;cursor:pointer;font-size:20px">➤</button></div></form></div>
+    </div><script>
+      document.getElementById('c').scrollTop=999999;
+      function toggleSidebar() {
+          const sb = document.getElementById('sb');
+          sb.classList.toggle('hide');
+          localStorage.setItem('sb_state', sb.classList.contains('hide') ? 'hidden' : 'visible');
+      }
+      if(localStorage.getItem('sb_state') === 'hidden') document.getElementById('sb').classList.add('hide');
+      document.getElementById('inp').addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              document.getElementById('chat-form').submit();
+          }
+      });
+    </script></body></html>""", history=h)
+
+    @app.route("/del/<int:cid>")
+    def del_chat(cid):
+      try:
+        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
+        cur=conn.cursor();cur.execute("DELETE FROM chat_history WHERE id=%s",(cid,));conn.commit();cur.close();conn.close()
+      except: pass
+      return redirect(url_for('chat'))
+
+    @app.route("/clear")
+    def clear():
+      return redirect(url_for('chat'))
+
+    if __name__ == "__main__":
+      app.run(host="0.0.0.0", port=5000)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gpt-client
+  namespace: demo-webdb
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gpt-client
+  template:
+    metadata:
+      labels:
+        app: gpt-client
+    spec:
+      containers:
+      - name: gpt-client
+        image: python:3.9-slim
+        command: ["/bin/sh", "-c"]
+        args:
+          - pip install flask openai psycopg2-binary;
+            python /app/app.py;
+        env:
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nti-gpt-secrets
+              key: OPENAI_API_KEY
+        - name: AWX_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: nti-gpt-secrets
+              key: AWX_TOKEN
+        volumeMounts:
+        - name: code
+          mountPath: /app
+      volumes:
+      - name: code
+        configMap:
+          name: gpt-app-code
