@@ -15,12 +15,17 @@ data:
     U, T, ID = "http://awx-service.awx.svc.cluster.local", os.getenv("AWX_TOKEN"), "11"
     
     def trig(r, d=False):
+      # Robust extraction: find the first instance of 'apiVersion:'
       start = r.find("apiVersion:")
       if start == -1: return "NO-YAML"
-      ns_search = re.search(r"namespace:\s*([\w-]+)", r)
-      target_ns = ns_search.group(1) if ns_search else "demo-webdb"
+      
+      # Extract from apiVersion to the end, then strip backticks if present
       m = r[start:].strip()
-      m = re.sub(r"```yaml|```", "", m).strip()
+      m = m.split("```")[0].strip() # Cut off any trailing backticks or text
+      
+      ns_search = re.search(r"namespace:\s*([\w-]+)", m)
+      target_ns = ns_search.group(1) if ns_search else "demo-webdb"
+      
       p = {"extra_vars": {"manifest_content": m, "target_namespace": target_ns, "DELETE_MODE": "true" if d else "false"}}
       req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
       req.add_header("Authorization", f"Bearer {T}")
@@ -41,8 +46,7 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        # --- FIXED SYSTEM PROMPT STRING ---
-        sys_msg = "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ Rules: 1. You MUST wrap all Kubernetes YAML inside triple backticks like this: ```yaml [code] ```. 2. NEVER put your playful conversational text inside those backticks. 3. NEVER include a 'kind: Namespace' object. Explain briefly outside the code block that you're skipping the namespace creation to keep the demo dashboard perfectly green! ✅ 4. Ensure the 'namespace:' field in the metadata matches the user's request."
+        sys_msg = "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ Rules: 1. You MUST wrap all Kubernetes YAML inside triple backticks like this: ```yaml [code] ```. 2. NEVER put conversational text inside those backticks. 3. NEVER include a 'kind: Namespace' object. 4. Ensure the 'namespace:' field matches the user's request."
         
         cp = client.chat.completions.create(
             model="gpt-4o", 
