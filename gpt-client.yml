@@ -16,26 +16,25 @@ data:
     
     def trig(r, d=False):
       start = r.find("apiVersion:")
-      if start == -1: 
-          print("DEBUG: No apiVersion found in response")
-          return "NO-YAML"
+      if start == -1: return "NO-YAML"
+      
+      # NEW: Extract target namespace from the YAML to prevent 400 errors
+      ns_search = re.search(r"namespace:\s*([\w-]+)", r)
+      target_ns = ns_search.group(1) if ns_search else "demo-webdb"
       
       m = r[start:].strip()
       m = re.sub(r"```yaml|```", "", m).strip()
       
-      p = {"extra_vars": {"manifest_content": m, "DELETE_MODE": "true" if d else "false"}}
+      # Pass target_namespace to AWX so the REST API knows where to go
+      p = {"extra_vars": {"manifest_content": m, "target_namespace": target_ns, "DELETE_MODE": "true" if d else "false"}}
       req = url_request.Request(f"{U}/api/v2/job_templates/{ID}/launch/", data=json.dumps(p).encode(), method='POST')
       req.add_header("Authorization", f"Bearer {T}")
       req.add_header("Content-Type", "application/json")
       
       try:
-        print(f"DEBUG: Attempting to trigger AWX Job {ID}...")
         with url_request.urlopen(req, timeout=10) as resp:
-            job_id = json.loads(resp.read().decode()).get('job')
-            print(f"DEBUG: AWX Success! Job ID: {job_id}")
-            return job_id
+            return json.loads(resp.read().decode()).get('job')
       except Exception as e:
-        print(f"DEBUG: AWX ERROR: {e}")
         return f"AWX-ERR: {e}"
     
     def db_save(u, g):
@@ -51,8 +50,7 @@ data:
         cp = client.chat.completions.create(model="gpt-4o", messages=[{"role": "system", "content": "You are a K8s YAML generator. Only output valid YAML."}, {"role": "user", "content": m}])
         r = cp.choices[0].message.content
         res = trig(r, 'delete' in m.lower())
-        f = r + f"\n\n🚀 JOB: {res}"
-        db_save(m, f); return redirect(url_for('chat'))
+        db_save(m, r + f"\n\n🚀 JOB: {res}"); return redirect(url_for('chat'))
       
       h = []
       try:
@@ -64,7 +62,10 @@ data:
     <!DOCTYPE html><html><head><style>
     body{font-family:sans-serif;margin:0;display:flex;height:100vh;background:#f4f7f6;overflow:hidden}
     #sb{width:280px;background:#202123;color:#fff;display:flex;flex-direction:column;flex-shrink:0;transition:0.3s}
-    #sb.hide{width:0;overflow:hidden}
+    
+    /* FIX: Sidebar stays hidden on refresh if toggled */
+    #sb.hide{margin-left:-280px;visibility:hidden}
+    
     .main{flex:1;display:flex;flex-direction:column;background:#fff}
     .header{padding:12px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center}
     .chat-area{flex:1;overflow-y:auto;padding:20px 15%;display:flex;flex-direction:column;gap:15px}
@@ -72,30 +73,31 @@ data:
     .u{align-self:flex-end;background:#007bff;color:#fff}
     .a{align-self:flex-start;background:#f7f7f8;border:1px solid #ddd;font-family:monospace}
     .input-wrap{padding:20px 15%}
-    
-    /* UPDATED FORM FOR MULTI-LINE TEXTAREA */
     form{display:flex;flex-direction:column;border:1px solid #ddd;border-radius:12px;padding:10px;background:#fff}
-    textarea{flex:1;border:none;outline:none;padding:10px;font-family:inherit;font-size:14px;resize:none;min-height:60px;overflow-wrap:break-word;white-space:pre-wrap;}
+    textarea{flex:1;border:none;outline:none;padding:10px;font-family:inherit;font-size:14px;min-height:100px;resize:vertical;white-space:pre-wrap;}
     .btn-wrap{display:flex;justify-content:flex-end;padding-top:5px}
-
     .h-item{padding:12px 20px;font-size:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;cursor:pointer}
-    .h-text{flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .h-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .del-btn{color:#ff4d4d;text-decoration:none;padding-left:10px}
     </style></head><body>
-    <div id="sb"><div style="padding:20px;font-size:11px;opacity:0.5">HISTORY (GPT-5)</div>
-    <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span class="h-text">💬 {{row[0]}}</span><a href="/del/{{row[2]}}" class="del-btn" onclick="event.stopPropagation()">×</a></div>{% endfor %}</div></div>
-    <div class="main"><div class="header"><div><span style="cursor:pointer;margin-right:15px" onclick="document.getElementById('sb').classList.toggle('hide')">☰</span><b>NTI Zero-Touch</b></div><a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a></div>
+    <div id="sb"><div style="padding:20px;font-size:11px;opacity:0.5;letter-spacing:1px">VERSION 1.2 - ZTP</div>
+    <div style="overflow-y:auto;flex:1">{% for row in history %}<div class="h-item" onclick="document.getElementById('inp').value='{{row[0]|replace("'","\\'")}}';document.getElementById('inp').focus()"><span class="h-text">💬 {{row[0]}}</span><a href="/del/{{row[2]}}" class="del-btn">×</a></div>{% endfor %}</div></div>
+    <div class="main"><div class="header"><div><span style="cursor:pointer;margin-right:15px" onclick="toggleSidebar()">☰</span><b>NTI Zero-Touch</b></div><a href="/clear" style="text-decoration:none;color:#007bff;font-size:12px;border:1px solid;padding:4px 10px;border-radius:15px">+ New Chat</a></div>
     <div class="chat-area" id="c">{% for row in history %}<div class="m u">{{row[0]}}</div><div class="m a">{{row[1]}}</div>{% endfor %}</div>
-    <div class="input-wrap">
-      <form method="POST" id="chat-form">
-        <textarea name="msg" placeholder="How may I help you today?" required id="inp" autocomplete="off"></textarea>
-        <div class="btn-wrap"><button style="border:none;background:none;color:#007bff;cursor:pointer;font-size:20px">➤</button></div>
-      </form>
-    </div>
-    </div>
-    <script>
+    <div class="input-wrap"><form method="POST" id="chat-form"><textarea name="msg" placeholder="Describe migration task..." required id="inp"></textarea>
+    <div class="btn-wrap"><button style="border:none;background:none;color:#007bff;cursor:pointer;font-size:20px">➤</button></div></form></div>
+    </div><script>
       document.getElementById('c').scrollTop=999999;
-      // Handle Enter key for textarea
+      
+      function toggleSidebar() {
+          const sb = document.getElementById('sb');
+          sb.classList.toggle('hide');
+          localStorage.setItem('sb_state', sb.classList.contains('hide') ? 'hidden' : 'visible');
+      }
+
+      // Check storage so it doesn't pop open every time
+      if(localStorage.getItem('sb_state') === 'hidden') document.getElementById('sb').classList.add('hide');
+
       document.getElementById('inp').addEventListener('keydown', function(e) {
           if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -114,11 +116,9 @@ data:
 
     @app.route("/clear")
     def clear():
-      try:
-        conn=psycopg2.connect(host="postgres",database="appdb",user="appuser",password="supersecretpassword")
-        cur=conn.cursor();cur.execute("DELETE FROM chat_history;");conn.commit();cur.close();conn.close()
-      except: pass
+      # Note: We are redirecting to the main page. History remains in DB.
       return redirect(url_for('chat'))
+
     if __name__ == "__main__":
       app.run(host="0.0.0.0", port=5000)
 ---
