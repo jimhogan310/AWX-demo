@@ -15,14 +15,15 @@ data:
     U, T, ID = "http://awx-service.awx.svc.cluster.local", os.getenv("AWX_TOKEN"), "11"
     
     def trig(r, d=False):
-      # Robust extraction: find the first instance of 'apiVersion:'
+      # Robust extraction: ignore chatter, find the start of the YAML
       start = r.find("apiVersion:")
       if start == -1: return "NO-YAML"
       
-      # Extract from apiVersion to the end, then strip backticks if present
+      # Cut off any trailing chatter or backticks
       m = r[start:].strip()
-      m = m.split("```")[0].strip() # Cut off any trailing backticks or text
+      m = m.split("```")[0].strip()
       
+      # Extract namespace for AWX routing
       ns_search = re.search(r"namespace:\s*([\w-]+)", m)
       target_ns = ns_search.group(1) if ns_search else "demo-webdb"
       
@@ -46,7 +47,17 @@ data:
     def chat():
       if request.method == "POST":
         m = request.form.get("msg")
-        sys_msg = "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ Rules: 1. You MUST wrap all Kubernetes YAML inside triple backticks like this: ```yaml [code] ```. 2. NEVER put conversational text inside those backticks. 3. NEVER include a 'kind: Namespace' object. 4. Ensure the 'namespace:' field matches the user's request."
+        # --- AMBER PERSONA: COMPLETE MANIFEST VERSION ---
+        sys_msg = (
+            "You are Amber (Princess Ambyrella), the NTI Modernization Muse! ✨ "
+            "Rules: 1. Wrap all K8s YAML in triple backticks: ```yaml [code] ```. "
+            "2. NEVER include 'kind: Namespace'. "
+            "3. CRITICAL: Even if the user wants to DELETE something, you MUST provide a "
+            "COMPLETE and VALID Kubernetes manifest (with metadata, spec, selector, template, and containers). "
+            "The backend uses this full manifest to identify exactly what to remove! "
+            "4. Be playful and explain why you skip the namespace to keep the demo green! ✅ "
+            "5. No bash/kubectl commands in your response."
+        )
         
         cp = client.chat.completions.create(
             model="gpt-4o", 
